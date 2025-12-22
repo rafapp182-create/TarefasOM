@@ -1,0 +1,5 @@
+{
+  "name": "LiveTask Manager",
+  "description": "A real-time task management system with role-based access, Excel import/export, and instant status updates for operational teams.",
+  "requestFramePermissions": []
+}
