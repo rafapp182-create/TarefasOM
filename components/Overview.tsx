@@ -31,18 +31,19 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
   }, []);
 
   // Explicitly typing stats to ensure properties are recognized as numbers for arithmetic operations
+  // Renamed nãoExecutada to naoExecutada to avoid non-ASCII character issues in some environments
   const stats = useMemo<{
     total: number;
     executada: number;
     emAndamento: number;
-    nãoExecutada: number;
+    naoExecutada: number;
     pendente: number;
   }>(() => {
     return {
       total: tasks.length,
       executada: tasks.filter(t => t.status === 'Executada').length,
       emAndamento: tasks.filter(t => t.status === 'Em andamento').length,
-      nãoExecutada: tasks.filter(t => t.status === 'Não executada').length,
+      naoExecutada: tasks.filter(t => t.status === 'Não executada').length,
       pendente: tasks.filter(t => t.status === 'Pendente').length,
     };
   }, [tasks]);
@@ -83,6 +84,11 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
   const maxTrendTasks = Math.max(...trendData.map(d => d.value), 1);
   const completionRate = stats.total > 0 ? Math.round((stats.executada / stats.total) * 100) : 0;
 
+  // Pre-calculate percentages for the donut chart to ensure arithmetic safety and avoid line 147 error
+  const pExec = stats.total > 0 ? (stats.executada / stats.total) * 100 : 0;
+  const pAndamento = stats.total > 0 ? (stats.emAndamento / stats.total) * 100 : 0;
+  const pPendente = stats.total > 0 ? (stats.pendente / stats.total) * 100 : 0;
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-20">
@@ -116,7 +122,7 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
         <StatCard icon={<ClipboardList size={24} />} label="Total OMs" value={stats.total} color="blue" />
         <StatCard icon={<CheckCircle2 size={24} />} label="Concluídas" value={stats.executada} color="emerald" subtitle={`${Math.round((stats.executada/stats.total || 0) * 100)}% de sucesso`} />
         <StatCard icon={<Clock size={24} />} label="Em Campo" value={stats.emAndamento} color="amber" />
-        <StatCard icon={<AlertCircle size={24} />} label="Paradas/Não Exec" value={stats.nãoExecutada} color="rose" />
+        <StatCard icon={<AlertCircle size={24} />} label="Paradas/Não Exec" value={stats.naoExecutada} color="rose" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -181,10 +187,10 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
                   style={{
                     background: stats.total > 0 
                       ? `conic-gradient(
-                          #10b981 0% ${(stats.executada/stats.total)*100}%, 
-                          #3b82f6 ${(stats.executada/stats.total)*100}% ${((stats.executada+stats.emAndamento)/stats.total)*100}%,
-                          #f59e0b ${((stats.executada+stats.emAndamento)/stats.total)*100}% ${((stats.executada+stats.emAndamento+stats.pendente)/stats.total)*100}%,
-                          #f43f5e ${((stats.executada+stats.emAndamento+stats.pendente)/stats.total)*100}% 100%
+                          #10b981 0% ${pExec}%, 
+                          #3b82f6 ${pExec}% ${pExec + pAndamento}%,
+                          #f59e0b ${pExec + pAndamento}% ${pExec + pAndamento + pPendente}%,
+                          #f43f5e ${pExec + pAndamento + pPendente}% 100%
                         )`
                       : '#f3f4f6'
                   }}
@@ -200,7 +206,7 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
                 <LegendItem color="bg-emerald-500" label="Executadas" value={stats.executada} />
                 <LegendItem color="bg-blue-500" label="Em Andamento" value={stats.emAndamento} />
                 <LegendItem color="bg-amber-500" label="Pendentes" value={stats.pendente} />
-                <LegendItem color="bg-rose-500" label="Não Executadas" value={stats.nãoExecutada} />
+                <LegendItem color="bg-rose-500" label="Não Executadas" value={stats.naoExecutada} />
              </div>
           </div>
         </div>

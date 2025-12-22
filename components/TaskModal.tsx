@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Task, UserProfile, TaskStatus, Shift, HistoryEntry } from '../types';
-import { X, CheckCircle2, PlayCircle, XCircle, Clock, MessageSquare, Save, Info, Briefcase, History, User } from 'lucide-react';
+import { X, CheckCircle2, PlayCircle, XCircle, Clock, MessageSquare, Save, Info, Briefcase, History, User, Eye } from 'lucide-react';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -12,13 +12,16 @@ interface TaskModalProps {
 }
 
 const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, profile }) => {
+  const isExecutor = profile.role === 'executor';
   const [newStatus, setNewStatus] = useState<TaskStatus>(task.status);
   const [shift, setShift] = useState<Shift | ''>(task.shift || '');
   const [reason, setReason] = useState(task.reason || '');
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'update' | 'details'>('update');
+  const [activeTab, setActiveTab] = useState<'update' | 'details'>(isExecutor ? 'details' : 'update');
 
   const handleUpdate = async () => {
+    if (isExecutor) return;
+
     if (!shift) {
       alert("O campo Turno (A, B, C ou D) é obrigatório.");
       return;
@@ -84,22 +87,24 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, profile }) => {
 
         {/* Navigation */}
         <div className="flex border-b border-gray-100 px-8 shrink-0 bg-gray-50">
-          <button 
-            onClick={() => setActiveTab('update')}
-            className={`px-6 py-4 text-xs font-black uppercase tracking-widest transition-all border-b-4 ${activeTab === 'update' ? 'border-blue-600 text-blue-600' : 'border-transparent text-black'}`}
-          >
-            Atualizar Status
-          </button>
+          {!isExecutor && (
+            <button 
+              onClick={() => setActiveTab('update')}
+              className={`px-6 py-4 text-xs font-black uppercase tracking-widest transition-all border-b-4 ${activeTab === 'update' ? 'border-blue-600 text-blue-600' : 'border-transparent text-black'}`}
+            >
+              Atualizar Status
+            </button>
+          )}
           <button 
             onClick={() => setActiveTab('details')}
             className={`px-6 py-4 text-xs font-black uppercase tracking-widest transition-all border-b-4 ${activeTab === 'details' ? 'border-blue-600 text-blue-600' : 'border-transparent text-black'}`}
           >
-            Dados do Excel
+            {isExecutor ? 'Visualizar Informações' : 'Dados do Excel'}
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-8">
-          {activeTab === 'update' && (
+          {activeTab === 'update' && !isExecutor && (
             <div className="space-y-8">
               <div>
                 <label className="block text-xs font-black text-black uppercase tracking-widest mb-4">Escolha o novo estado</label>
@@ -160,6 +165,18 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, profile }) => {
 
           {activeTab === 'details' && (
             <div className="space-y-10 pb-10">
+              {isExecutor && (
+                <div className="bg-blue-50 p-6 rounded-3xl border border-blue-100 flex items-start gap-4">
+                  <div className="p-3 bg-blue-600 text-white rounded-2xl shrink-0"><Eye size={20} /></div>
+                  <div>
+                    <h4 className="text-sm font-black text-black uppercase tracking-tight">Modo de Visualização</h4>
+                    <p className="text-xs font-bold text-black opacity-70 mt-1 leading-relaxed">
+                      Você possui acesso apenas para consulta das atividades. Alterações de status devem ser solicitadas ao Administrador ou Gerente.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4 flex items-center gap-2">
                   <History size={14} /> Histórico Recente
@@ -212,23 +229,32 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, profile }) => {
           )}
         </div>
 
-        {activeTab === 'update' && (
-          <div className="p-8 border-t border-gray-100 bg-gray-100/50 flex flex-col md:flex-row gap-4 shrink-0">
-            <button
-              onClick={handleUpdate}
-              disabled={loading}
-              className="flex-[2] py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-[1.5rem] font-black uppercase tracking-widest shadow-2xl shadow-blue-200 transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
-            >
-              {loading ? "Processando..." : <><Save size={24} /> Salvar Alteração</>}
-            </button>
+        <div className="p-8 border-t border-gray-100 bg-gray-100/50 flex flex-col md:flex-row gap-4 shrink-0">
+          {!isExecutor && activeTab === 'update' ? (
+            <>
+              <button
+                onClick={handleUpdate}
+                disabled={loading}
+                className="flex-[2] py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-[1.5rem] font-black uppercase tracking-widest shadow-2xl shadow-blue-200 transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
+              >
+                {loading ? "Processando..." : <><Save size={24} /> Salvar Alteração</>}
+              </button>
+              <button
+                onClick={onClose}
+                className="flex-1 py-5 bg-white border-2 border-gray-200 text-black rounded-[1.5rem] font-black uppercase tracking-widest hover:bg-gray-100 transition-all active:scale-95"
+              >
+                Voltar
+              </button>
+            </>
+          ) : (
             <button
               onClick={onClose}
-              className="flex-1 py-5 bg-white border-2 border-gray-200 text-black rounded-[1.5rem] font-black uppercase tracking-widest hover:bg-gray-100 transition-all active:scale-95"
+              className="w-full py-5 bg-black text-white rounded-[1.5rem] font-black uppercase tracking-widest hover:bg-zinc-800 transition-all active:scale-95"
             >
-              Voltar
+              Fechar Visualização
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

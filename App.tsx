@@ -31,13 +31,16 @@ const App: React.FC = () => {
         setUser(firebaseUser);
         
         // Ouvinte em tempo real para o perfil do usuário
-        // Se o gerente excluir o documento do usuário, ele será deslogado na hora
         unsubscribeProfile = onSnapshot(doc(db, 'users', firebaseUser.uid), (docSnap) => {
           if (docSnap.exists()) {
-            setProfile(docSnap.data() as UserProfile);
+            const data = docSnap.data() as UserProfile;
+            setProfile(data);
+            // Se for executor, força a visão de tarefas se estiver no dashboard
+            if (data.role === 'executor' && currentView === 'dashboard') {
+              setCurrentView('tarefas');
+            }
             setLoading(false);
           } else {
-            // Documento não existe ou foi deletado
             signOut(auth);
             setUser(null);
             setProfile(null);
@@ -59,7 +62,7 @@ const App: React.FC = () => {
       unsubscribeAuth();
       if (unsubscribeProfile) unsubscribeProfile();
     };
-  }, []);
+  }, [currentView]);
 
   useEffect(() => {
     if (!user) return;
@@ -80,7 +83,7 @@ const App: React.FC = () => {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50">
         <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-        <p className="text-gray-600 font-medium">Sincronizando acesso...</p>
+        <p className="text-black font-medium">Sincronizando acesso...</p>
       </div>
     );
   }
@@ -91,9 +94,20 @@ const App: React.FC = () => {
 
   const renderView = () => {
     switch(currentView) {
-      case 'dashboard': return <Overview grupos={grupos} />;
+      case 'dashboard': 
+        return profile.role === 'executor' ? (
+          <Dashboard 
+            profile={profile} 
+            grupos={grupos} 
+            activeGroupId={activeGroupId} 
+            setActiveGroupId={setActiveGroupId}
+          />
+        ) : (
+          <Overview grupos={grupos} />
+        );
       case 'usuarios': return <UserManagement profile={profile} />;
       case 'relatorios': return <Reports grupos={grupos} />;
+      case 'tarefas':
       default: return (
         <Dashboard 
           profile={profile} 
@@ -112,13 +126,13 @@ const App: React.FC = () => {
         <div className="flex items-center gap-2">
           <button 
             onClick={() => setIsSidebarOpen(true)}
-            className="p-2 hover:bg-gray-100 rounded-lg text-gray-600"
+            className="p-2 hover:bg-gray-100 rounded-lg text-black"
           >
             <Menu size={24} />
           </button>
           <span className="font-black text-blue-600 tracking-tighter uppercase">OmPro</span>
         </div>
-        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest bg-gray-50 px-2 py-1 rounded">
+        <div className="text-[10px] font-black text-black uppercase tracking-widest bg-gray-50 px-2 py-1 rounded">
           {profile.role}
         </div>
       </div>

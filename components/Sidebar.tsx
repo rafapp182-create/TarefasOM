@@ -14,6 +14,8 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ profile, currentView, setView, onClose }) => {
+  const isExecutor = profile.role === 'executor';
+
   const getRoleIcon = () => {
     switch(profile.role) {
       case 'gerente': return <ShieldCheck className="text-purple-600" />;
@@ -69,16 +71,18 @@ const Sidebar: React.FC<SidebarProps> = ({ profile, currentView, setView, onClos
       </div>
 
       <nav className="flex-1 p-4 space-y-2 mt-4 min-h-0 overflow-y-auto">
-        <NavItem 
-          icon={<LayoutGrid size={20} />} 
-          label="Dashboard" 
-          active={currentView === 'dashboard'} 
-          onClick={() => setView('dashboard')}
-        />
+        {!isExecutor && (
+          <NavItem 
+            icon={<LayoutGrid size={20} />} 
+            label="Dashboard" 
+            active={currentView === 'dashboard'} 
+            onClick={() => setView('dashboard')}
+          />
+        )}
         <NavItem 
           icon={<LayoutDashboard size={20} />} 
           label="Tarefas" 
-          active={currentView === 'tarefas'} 
+          active={currentView === 'tarefas' || (isExecutor && currentView === 'dashboard')} 
           onClick={() => setView('tarefas')}
         />
         {(profile.role === 'gerente' || profile.role === 'administrador') && (

@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Task, UserProfile, TaskStatus } from '../types';
-import { Info, Trash2, Calendar, Tag, Briefcase } from 'lucide-react';
+import { Info, Trash2, Briefcase, Eye } from 'lucide-react';
 import { doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -13,6 +13,8 @@ interface TaskCardProps {
 }
 
 const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, variant = 'card' }) => {
+  const isExecutor = profile.role === 'executor';
+
   const getStatusStyle = (status: TaskStatus) => {
     switch (status) {
       case 'Executada': return 'bg-emerald-500 text-white border-emerald-600';
@@ -70,9 +72,9 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
             <button 
               onClick={onOpenDetails}
               className="p-2 text-blue-600 hover:bg-blue-100 rounded-xl transition-all"
-              title="Detalhes e Atualização"
+              title={isExecutor ? "Visualizar Detalhes" : "Detalhes e Atualização"}
             >
-              <Info size={18} />
+              {isExecutor ? <Eye size={18} /> : <Info size={18} />}
             </button>
             {profile.role === 'gerente' && (
               <button 
@@ -104,7 +106,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
             onClick={onOpenDetails}
             className="flex-1 flex items-center justify-center gap-2 py-3 bg-black text-white rounded-xl text-xs font-black uppercase hover:bg-zinc-800 transition-all"
           >
-            <Info size={14} /> Detalhes
+            {isExecutor ? <Eye size={14} /> : <Info size={14} />} {isExecutor ? 'Ver Dados' : 'Detalhes'}
           </button>
           {profile.role === 'gerente' && (
             <button 
