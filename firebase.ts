@@ -4,7 +4,7 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 // Configurações reais fornecidas pelo usuário
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyC3BY7Q57Ce7ZDzqacPJlF4Wbxq0vTWHM8",
   authDomain: "ompro-d6209.firebaseapp.com",
   projectId: "ompro-d6209",

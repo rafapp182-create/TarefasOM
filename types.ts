@@ -43,11 +43,3 @@ export interface Task {
   updatedByEmail: string;
   history?: HistoryEntry[];
 }
-
-export interface HistoryEntry {
-  timestamp: number;
-  status: TaskStatus;
-  shift?: Shift;
-  reason?: string;
-  user: string;
-}
