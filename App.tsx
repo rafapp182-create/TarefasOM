@@ -24,7 +24,8 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeType>(() => {
-    return (localStorage.getItem('ompro-theme') as ThemeType) || 'light';
+    const saved = localStorage.getItem('ompro-theme');
+    return (saved === 'dark' || saved === 'light') ? saved as ThemeType : 'light';
   });
 
   useEffect(() => {
@@ -53,7 +54,6 @@ const App: React.FC = () => {
             }
             setLoading(false);
           } else {
-            // Caso especial: Usuário existe no Auth mas o perfil no Firestore sumiu ou não foi criado
             alert("Erro crítico: Seu perfil de acesso não foi encontrado no banco de dados. Entre em contato com o suporte.");
             signOut(auth);
             setUser(null);
@@ -135,7 +135,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-gray-100 dark:bg-zinc-950 overflow-hidden relative transition-colors duration-300">
-      {/* Mobile Header */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 flex items-center justify-between px-4 z-30">
         <div className="flex items-center gap-2">
           <button 
@@ -151,7 +150,6 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Sidebar Overlay for Mobile */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-[2px] animate-in fade-in duration-200"
