@@ -13,6 +13,7 @@ import Overview from './components/Overview';
 import { Loader2, Menu } from 'lucide-react';
 
 export type ViewType = 'dashboard' | 'tarefas' | 'usuarios' | 'relatorios';
+export type ThemeType = 'light' | 'dark';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -22,6 +23,20 @@ const App: React.FC = () => {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [theme, setTheme] = useState<ThemeType>(() => {
+    return (localStorage.getItem('ompro-theme') as ThemeType) || 'light';
+  });
+
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('ompro-theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
   useEffect(() => {
     let unsubscribeProfile: (() => void) | null = null;
@@ -29,13 +44,10 @@ const App: React.FC = () => {
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
-        
-        // Ouvinte em tempo real para o perfil do usuário
         unsubscribeProfile = onSnapshot(doc(db, 'users', firebaseUser.uid), (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data() as UserProfile;
             setProfile(data);
-            // Se for executor, força a visão de tarefas se estiver no dashboard
             if (data.role === 'executor' && currentView === 'dashboard') {
               setCurrentView('tarefas');
             }
@@ -81,15 +93,15 @@ const App: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50">
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-zinc-950">
         <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-        <p className="text-black font-medium">Sincronizando acesso...</p>
+        <p className="text-black dark:text-zinc-400 font-medium">Sincronizando acesso...</p>
       </div>
     );
   }
 
   if (!user || !profile) {
-    return <Login />;
+    return <Login theme={theme} />;
   }
 
   const renderView = () => {
@@ -120,19 +132,19 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden relative">
+    <div className="flex h-screen bg-gray-100 dark:bg-zinc-950 overflow-hidden relative transition-colors duration-300">
       {/* Mobile Header */}
-      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 z-30">
+      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 flex items-center justify-between px-4 z-30">
         <div className="flex items-center gap-2">
           <button 
             onClick={() => setIsSidebarOpen(true)}
-            className="p-2 hover:bg-gray-100 rounded-lg text-black"
+            className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg text-black dark:text-white"
           >
             <Menu size={24} />
           </button>
           <span className="font-black text-blue-600 tracking-tighter uppercase">OmPro</span>
         </div>
-        <div className="text-[10px] font-black text-black uppercase tracking-widest bg-gray-50 px-2 py-1 rounded">
+        <div className="text-[10px] font-black text-black dark:text-white uppercase tracking-widest bg-gray-50 dark:bg-zinc-800 px-2 py-1 rounded">
           {profile.role}
         </div>
       </div>
@@ -145,11 +157,12 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Sidebar Component */}
       <div className={`fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <Sidebar 
           profile={profile} 
           currentView={currentView} 
+          theme={theme}
+          toggleTheme={toggleTheme}
           setView={(view) => {
             setCurrentView(view);
             setIsSidebarOpen(false);
@@ -158,7 +171,7 @@ const App: React.FC = () => {
         />
       </div>
 
-      <main className="flex-1 overflow-y-auto overflow-x-hidden pt-16 md:pt-0">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden pt-16 md:pt-0 custom-scrollbar">
         {renderView()}
       </main>
     </div>

@@ -4,7 +4,7 @@ import { collection, query, where, onSnapshot, doc, addDoc, writeBatch, getDocs 
 import { db } from '../firebase';
 import { UserProfile, Grupo, Task, TaskStatus } from '../types';
 import TaskCard from './TaskCard';
-import { Trash2, Upload, Loader2, FileSpreadsheet, Settings2, Check, FolderPlus, AlertTriangle, List, Eraser, X, AlertOctagon, Search, Filter } from 'lucide-react';
+import { Trash2, Upload, Loader2, FileSpreadsheet, Settings2, FolderPlus, Search, Filter, Eraser, AlertOctagon } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import TaskModal from './TaskModal';
 
@@ -25,13 +25,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
   const [processingText, setProcessingText] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<TaskStatus | 'Todos'>('Todos');
-  
-  const [confirmDelete, setConfirmDelete] = useState<{
-    type: 'group' | 'tasks';
-    title: string;
-    message: string;
-    onConfirm: () => void;
-  } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ type: 'group' | 'tasks'; title: string; message: string; onConfirm: () => void; } | null>(null);
 
   useEffect(() => {
     if (grupos.length > 0 && activeGroupId && !grupos.find(g => g.id === activeGroupId)) {
@@ -44,21 +38,8 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
   const formatExcelValue = (val: any): string => {
     if (val === undefined || val === null) return '';
     if (val instanceof Date) {
-      const day = String(val.getUTCDate()).padStart(2, '0');
-      const month = String(val.getUTCMonth() + 1).padStart(2, '0');
-      const year = val.getUTCFullYear();
-      return `${day}/${month}/${year}`;
+      return `${String(val.getUTCDate()).padStart(2, '0')}/${String(val.getUTCMonth() + 1).padStart(2, '0')}/${val.getUTCFullYear()}`;
     }
-    if (typeof val === 'number' && val > 30000 && val < 60000) {
-      try {
-        const date = new Date(Math.round((val - 25569) * 86400 * 1000));
-        const day = String(date.getUTCDate()).padStart(2, '0');
-        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-        const year = date.getUTCFullYear();
-        return `${day}/${month}/${year}`;
-      } catch (e) { return String(val); }
-    }
-    if (typeof val === 'number') return val.toLocaleString('pt-BR', { useGrouping: false });
     return String(val).trim();
   };
 
@@ -106,7 +87,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
       setNewGroupName('');
       setIsAddingGroup(false);
       setActiveGroupId(docRef.id);
-    } catch (error) { alert("Erro ao criar grupo."); }
+    } catch (error) { console.error(error); }
   };
 
   const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -130,31 +111,25 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
         const colMin = findColumn(allKeys, ['data minima', 'inicio']);
         const colMax = findColumn(allKeys, ['data maxima', 'fim']);
 
-        const chunkSize = 400;
-        for (let i = 0; i < jsonData.length; i += chunkSize) {
-          const chunk = jsonData.slice(i, i + chunkSize);
-          const batch = writeBatch(db);
-          chunk.forEach((row: any) => {
-            const newTaskRef = doc(collection(db, 'tarefas'));
-            batch.set(newTaskRef, {
-              groupId: activeGroupId,
-              omNumber: colOM ? formatExcelValue(row[colOM]) : 'S/N',
-              description: colDesc ? formatExcelValue(row[colDesc]) : 'Sem descrição',
-              workCenter: colCT ? formatExcelValue(row[colCT]) : 'N/A',
-              minDate: colMin ? formatExcelValue(row[colMin]) : '',
-              maxDate: colMax ? formatExcelValue(row[colMax]) : '',
-              status: 'Pendente',
-              excelData: row,
-              updatedAt: Date.now(),
-              updatedBy: profile.uid,
-              updatedByEmail: profile.email
-            });
+        const batch = writeBatch(db);
+        jsonData.forEach((row: any) => {
+          const newTaskRef = doc(collection(db, 'tarefas'));
+          batch.set(newTaskRef, {
+            groupId: activeGroupId,
+            omNumber: colOM ? formatExcelValue(row[colOM]) : 'S/N',
+            description: colDesc ? formatExcelValue(row[colDesc]) : 'Sem descrição',
+            workCenter: colCT ? formatExcelValue(row[colCT]) : 'N/A',
+            minDate: colMin ? formatExcelValue(row[colMin]) : '',
+            maxDate: colMax ? formatExcelValue(row[colMax]) : '',
+            status: 'Pendente',
+            excelData: row,
+            updatedAt: Date.now(),
+            updatedBy: profile.uid,
+            updatedByEmail: profile.email
           });
-          await batch.commit();
-        }
-      } catch (err: any) { alert(err.message); } finally {
-        setIsProcessing(false);
-      }
+        });
+        await batch.commit();
+      } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); }
     };
     reader.readAsArrayBuffer(file);
   };
@@ -163,29 +138,27 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
 
   return (
     <div className="p-3 md:p-8 max-w-full mx-auto space-y-4 md:space-y-6">
-      {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl md:text-2xl font-black text-black flex items-center gap-2 uppercase tracking-tighter">
+          <h2 className="text-xl md:text-2xl font-black text-black dark:text-white flex items-center gap-2 uppercase tracking-tighter">
             Controle Operacional
             <span className="bg-emerald-500 text-white px-1.5 py-0.5 rounded text-[8px] md:text-[10px] font-black uppercase tracking-widest">LIVE</span>
           </h2>
-          <p className="text-xs md:text-sm text-black font-medium italic">Gestão de tarefas em tempo real.</p>
+          <p className="text-xs md:text-sm text-black dark:text-zinc-400 font-medium italic">Gestão de tarefas em tempo real.</p>
         </div>
         {profile.role === 'gerente' && (
-          <button onClick={() => setIsAddingGroup(true)} className="flex items-center justify-center gap-2 px-4 py-3 bg-black text-white rounded-xl font-bold transition-all text-sm w-full md:w-auto">
+          <button onClick={() => setIsAddingGroup(true)} className="flex items-center justify-center gap-2 px-4 py-3 bg-black dark:bg-zinc-800 text-white rounded-xl font-bold transition-all text-sm w-full md:w-auto">
             <FolderPlus size={18} /> Criar Nova Aba
           </button>
         )}
       </div>
 
-      {/* Tabs / Groups Scrolling */}
-      <div className="flex overflow-x-auto gap-1 border-b border-gray-200 pb-1 scrollbar-hide no-scrollbar">
+      <div className="flex overflow-x-auto gap-1 border-b border-gray-200 dark:border-zinc-800 pb-1 no-scrollbar">
         {grupos.map((grupo) => (
           <button 
             key={grupo.id} 
             onClick={() => setActiveGroupId(grupo.id)} 
-            className={`px-5 py-3 md:px-8 md:py-5 text-xs md:text-sm font-black transition-all border-b-4 whitespace-nowrap uppercase tracking-wider ${activeGroupId === grupo.id ? 'border-blue-600 text-blue-600 bg-blue-50/50' : 'border-transparent text-black'}`}
+            className={`px-5 py-3 md:px-8 md:py-5 text-xs md:text-sm font-black transition-all border-b-4 whitespace-nowrap uppercase tracking-wider ${activeGroupId === grupo.id ? 'border-blue-600 text-blue-600 bg-blue-50/50 dark:bg-blue-900/10' : 'border-transparent text-black dark:text-zinc-400'}`}
           >
             {grupo.name}
           </button>
@@ -193,24 +166,23 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
       </div>
 
       {isAddingGroup && (
-        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-xl border border-blue-50">
+        <div className="bg-white dark:bg-zinc-900 p-4 md:p-6 rounded-2xl shadow-xl border border-blue-50 dark:border-zinc-800 animate-in slide-in-from-top-4">
           <form onSubmit={handleAddGroup} className="flex flex-col md:flex-row items-end gap-4">
             <div className="flex-1 w-full">
-              <label className="block text-[10px] font-black text-black uppercase mb-1 ml-1">Nome da Aba</label>
-              <input autoFocus type="text" placeholder="Ex: PARADA SETOR 01" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className="w-full bg-gray-50 border-2 border-gray-200 p-3 md:p-4 rounded-xl focus:border-blue-500 outline-none font-bold text-black" />
+              <label className="block text-[10px] font-black text-black dark:text-zinc-400 uppercase mb-1 ml-1">Nome da Aba</label>
+              <input autoFocus type="text" placeholder="Ex: PARADA SETOR 01" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className="w-full bg-gray-50 dark:bg-zinc-800 border-2 border-gray-200 dark:border-zinc-700 p-3 md:p-4 rounded-xl focus:border-blue-500 outline-none font-bold text-black dark:text-white" />
             </div>
             <div className="flex gap-2 w-full md:w-auto">
               <button type="submit" className="flex-1 px-6 py-3 bg-blue-600 text-white font-black rounded-xl uppercase text-xs">Salvar</button>
-              <button type="button" onClick={() => setIsAddingGroup(false)} className="px-4 py-3 bg-gray-100 text-black font-bold rounded-xl text-xs">Sair</button>
+              <button type="button" onClick={() => setIsAddingGroup(false)} className="px-4 py-3 bg-gray-100 dark:bg-zinc-700 text-black dark:text-white font-bold rounded-xl text-xs">Sair</button>
             </div>
           </form>
         </div>
       )}
 
       {activeGroup ? (
-        <div className="space-y-4 md:space-y-6">
-          {/* Action Bar / Filters */}
-          <div className="bg-white p-3 md:p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col xl:flex-row gap-3">
+        <div className="space-y-4 md:space-y-6 animate-in fade-in duration-500">
+          <div className="bg-white dark:bg-zinc-900 p-3 md:p-4 rounded-2xl border border-gray-100 dark:border-zinc-800 shadow-sm flex flex-col xl:flex-row gap-3">
             <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 flex-1">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
@@ -219,7 +191,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
                   placeholder="Buscar OM, Descrição ou CT..." 
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black transition-all"
+                  className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black dark:text-white transition-all"
                 />
               </div>
               <div className="relative min-w-[160px]">
@@ -227,7 +199,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
                 <select 
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value as any)}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black appearance-none cursor-pointer"
+                  className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black dark:text-white appearance-none cursor-pointer"
                 >
                   <option value="Todos">Todos Status</option>
                   <option value="Pendente">Pendentes</option>
@@ -245,26 +217,10 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
                     <Upload size={16} /> Importar
                     <input type="file" accept=".xlsx, .xls" onChange={handleExcelImport} className="hidden" />
                   </label>
-                  <button 
-                    onClick={() => setConfirmDelete({
-                      type: 'tasks',
-                      title: 'Limpar Lista',
-                      message: 'Apagar permanentemente todas as tarefas deste grupo?',
-                      onConfirm: executeClearTasks
-                    })}
-                    className="p-3 bg-rose-50 text-rose-600 rounded-xl"
-                  >
+                  <button onClick={() => setConfirmDelete({ type: 'tasks', title: 'Limpar Lista', message: 'Apagar permanentemente todas as tarefas deste grupo?', onConfirm: executeClearTasks })} className="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-xl">
                     <Eraser size={18} />
                   </button>
-                  <button 
-                    onClick={() => setConfirmDelete({
-                      type: 'group',
-                      title: 'Excluir Aba',
-                      message: `Apagar a aba "${activeGroup.name}" e todas as suas tarefas?`,
-                      onConfirm: () => executeDeleteGroup(activeGroup.id)
-                    })}
-                    className="p-3 bg-rose-50 text-rose-600 rounded-xl"
-                  >
+                  <button onClick={() => setConfirmDelete({ type: 'group', title: 'Excluir Aba', message: `Apagar a aba "${activeGroup.name}" e todas as suas tarefas?`, onConfirm: () => executeDeleteGroup(activeGroup.id) })} className="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-xl">
                     <Trash2 size={18} />
                   </button>
                 </>
@@ -275,32 +231,29 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="animate-spin text-blue-600 w-10 h-10 mb-2" />
-              <p className="text-[10px] font-black uppercase text-black">Carregando dados...</p>
+              <p className="text-[10px] font-black uppercase text-black dark:text-zinc-400">Carregando dados...</p>
             </div>
           ) : filteredTasks.length > 0 ? (
             <div className="space-y-4">
-              {/* Desktop View: Table */}
-              <div className="hidden md:block bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+              <div className="hidden md:block bg-white dark:bg-zinc-900 rounded-2xl border border-gray-100 dark:border-zinc-800 overflow-hidden shadow-sm">
                 <table className="w-full text-left">
-                  <thead className="bg-gray-50 border-b border-gray-100">
+                  <thead className="bg-gray-50 dark:bg-zinc-800/50 border-b border-gray-100 dark:border-zinc-800">
                     <tr>
-                      <th className="px-6 py-4 text-[10px] font-black text-black uppercase tracking-widest">Nº OM</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-black uppercase tracking-widest">Descrição</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-black uppercase tracking-widest">CT</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-black uppercase tracking-widest text-center">Datas</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-black uppercase tracking-widest text-center">Status</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-black uppercase tracking-widest text-right">Ação</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest">Nº OM</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest">Descrição</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest">CT</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest text-center">Datas</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest text-center">Status</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest text-right">Ação</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-gray-50 dark:divide-zinc-800">
                     {filteredTasks.map(task => (
                       <TaskCard key={task.id} task={task} onOpenDetails={() => setSelectedTask(task)} profile={profile} variant="list" />
                     ))}
                   </tbody>
                 </table>
               </div>
-
-              {/* Mobile View: Cards */}
               <div className="md:hidden grid grid-cols-1 gap-3">
                 {filteredTasks.map(task => (
                   <TaskCard key={task.id} task={task} onOpenDetails={() => setSelectedTask(task)} profile={profile} variant="card" />
@@ -308,33 +261,31 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
               </div>
             </div>
           ) : (
-            <div className="py-20 text-center bg-white rounded-3xl border-2 border-dashed border-gray-200">
-              <FileSpreadsheet className="mx-auto text-blue-300 w-12 h-12 mb-4" />
-              <p className="text-sm font-black text-black uppercase">Nenhuma tarefa encontrada</p>
-              <p className="text-xs text-black italic mt-1">Refine seus filtros ou realize uma importação.</p>
+            <div className="py-20 text-center bg-white dark:bg-zinc-900 rounded-3xl border-2 border-dashed border-gray-200 dark:border-zinc-800">
+              <FileSpreadsheet className="mx-auto text-blue-300 dark:text-zinc-700 w-12 h-12 mb-4" />
+              <p className="text-sm font-black text-black dark:text-white uppercase">Nenhuma tarefa encontrada</p>
             </div>
           )}
         </div>
       ) : (
-        <div className="text-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
-          <Settings2 className="mx-auto w-12 h-12 text-gray-300 mb-4" />
-          <h3 className="text-sm font-black text-black uppercase tracking-widest">Selecione uma aba para começar</h3>
+        <div className="text-center py-20 bg-gray-50 dark:bg-zinc-900 rounded-3xl border-2 border-dashed border-gray-200 dark:border-zinc-800">
+          <Settings2 className="mx-auto w-12 h-12 text-gray-300 dark:text-zinc-700 mb-4" />
+          <h3 className="text-sm font-black text-black dark:text-zinc-400 uppercase tracking-widest">Selecione uma aba para começar</h3>
         </div>
       )}
 
-      {/* Reused generic handlers for cleaner code */}
       {selectedTask && <TaskModal task={selectedTask} onClose={() => setSelectedTask(null)} profile={profile} />}
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[250] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center animate-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl">
+            <div className="w-16 h-16 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
               <AlertOctagon size={32} />
             </div>
-            <h3 className="text-lg font-black text-black uppercase mb-2">{confirmDelete.title}</h3>
-            <p className="text-sm text-black mb-6 font-medium leading-tight">{confirmDelete.message}</p>
+            <h3 className="text-lg font-black text-black dark:text-white uppercase mb-2">{confirmDelete.title}</h3>
+            <p className="text-sm text-black dark:text-zinc-400 mb-6 font-medium leading-tight">{confirmDelete.message}</p>
             <div className="flex flex-col gap-2">
-              <button onClick={confirmDelete.onConfirm} className="w-full py-4 bg-rose-600 text-white rounded-xl font-black uppercase text-xs">Confirmar Exclusão</button>
-              <button onClick={() => setConfirmDelete(null)} className="w-full py-3 bg-gray-100 text-black rounded-xl font-bold text-xs">Cancelar</button>
+              <button onClick={confirmDelete.onConfirm} className="w-full py-4 bg-rose-600 text-white rounded-xl font-black uppercase text-xs">Confirmar</button>
+              <button onClick={() => setConfirmDelete(null)} className="w-full py-3 bg-gray-100 dark:bg-zinc-800 text-black dark:text-white rounded-xl font-bold text-xs">Cancelar</button>
             </div>
           </div>
         </div>
@@ -351,20 +302,18 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
   );
 
   async function executeClearTasks() {
-    setConfirmDelete(null);
-    setIsProcessing(true);
+    setConfirmDelete(null); setIsProcessing(true);
     try {
       const q = query(collection(db, 'tarefas'), where('groupId', '==', activeGroupId));
       const snapshot = await getDocs(q);
       const batch = writeBatch(db);
       snapshot.docs.forEach(d => batch.delete(d.ref));
       await batch.commit();
-    } catch (e) { alert("Erro ao limpar tarefas."); } finally { setIsProcessing(false); }
+    } catch (e) { console.error(e); } finally { setIsProcessing(false); }
   }
 
   async function executeDeleteGroup(groupId: string) {
-    setConfirmDelete(null);
-    setIsProcessing(true);
+    setConfirmDelete(null); setIsProcessing(true);
     try {
       const q = query(collection(db, 'tarefas'), where('groupId', '==', groupId));
       const snapshot = await getDocs(q);
@@ -372,7 +321,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
       snapshot.docs.forEach(d => batch.delete(d.ref));
       batch.delete(doc(db, 'grupos', groupId));
       await batch.commit();
-    } catch (e) { alert("Erro ao excluir aba."); } finally { setIsProcessing(false); }
+    } catch (e) { console.error(e); } finally { setIsProcessing(false); }
   }
 };
 
