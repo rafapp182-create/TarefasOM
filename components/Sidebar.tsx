@@ -26,8 +26,12 @@ const Sidebar: React.FC<SidebarProps> = ({ profile, currentView, setView, onClos
   const handleLogout = async () => {
     if (window.confirm("Deseja realmente sair do sistema OmPro?")) {
       try {
+        // Desloga do Firebase
         await signOut(auth);
-        // O onAuthStateChanged no App.tsx detectará a mudança e voltará para o Login automaticamente
+        
+        // Força o recarregamento da página para garantir que todos os 
+        // estados do React sejam limpos e o usuário volte para a tela de Login
+        window.location.reload();
       } catch (error) {
         console.error("Erro ao deslogar:", error);
         alert("Erro ao sair. Tente novamente.");
