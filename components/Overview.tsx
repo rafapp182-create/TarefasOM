@@ -84,10 +84,16 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
   const maxTrendTasks = Math.max(...trendData.map(d => d.value), 1);
   const completionRate = stats.total > 0 ? Math.round((stats.executada / stats.total) * 100) : 0;
 
-  // Pre-calculate percentages for the donut chart to ensure arithmetic safety and avoid line 147 error
+  // Pre-calculate percentages for the donut chart to ensure arithmetic safety
   const pExec = stats.total > 0 ? (stats.executada / stats.total) * 100 : 0;
   const pAndamento = stats.total > 0 ? (stats.emAndamento / stats.total) * 100 : 0;
   const pPendente = stats.total > 0 ? (stats.pendente / stats.total) * 100 : 0;
+
+  // Fix: Pre-calculate sums for the conic-gradient stops to avoid arithmetic operations directly in the template literal,
+  // which can lead to vague TypeScript "left-hand side of an arithmetic operation" errors on line 153.
+  const stop1 = pExec;
+  const stop2 = pExec + pAndamento;
+  const stop3 = pExec + pAndamento + pPendente;
 
   if (loading) {
     return (
@@ -187,10 +193,10 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
                   style={{
                     background: stats.total > 0 
                       ? `conic-gradient(
-                          #10b981 0% ${pExec}%, 
-                          #3b82f6 ${pExec}% ${pExec + pAndamento}%,
-                          #f59e0b ${pExec + pAndamento}% ${pExec + pAndamento + pPendente}%,
-                          #f43f5e ${pExec + pAndamento + pPendente}% 100%
+                          #10b981 0% ${stop1}%, 
+                          #3b82f6 ${stop1}% ${stop2}%,
+                          #f59e0b ${stop2}% ${stop3}%,
+                          #f43f5e ${stop3}% 100%
                         )`
                       : '#f3f4f6'
                   }}

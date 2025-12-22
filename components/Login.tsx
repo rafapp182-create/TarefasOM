@@ -13,8 +13,9 @@ const Login: React.FC = () => {
   const normalizeUsername = (input: string) => {
     return input.trim().toLowerCase()
       .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/\s+/g, '.');
+      .replace(/[\u0300-\u036f]/g, "") // Remove acentos
+      .replace(/\s+/g, '.')            // Espaços em pontos
+      .replace(/[^a-z0-9.]/g, "");     // Mantém apenas letras, números e pontos
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -34,10 +35,10 @@ const Login: React.FC = () => {
       await signInWithEmailAndPassword(auth, loginEmail, password);
     } catch (err: any) {
       console.error(err);
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        setError("Nome de usuário ou senha incorretos.");
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential' || err.code === 'auth/invalid-email') {
+        setError("Usuário ou senha incorretos.");
       } else {
-        setError("Erro ao acessar o sistema. Tente novamente.");
+        setError("Erro ao acessar. Tente novamente.");
       }
       setLoading(false);
     }
@@ -51,8 +52,8 @@ const Login: React.FC = () => {
             <div className="inline-flex p-5 bg-blue-600 rounded-3xl mb-6 shadow-xl shadow-blue-100">
               <LayoutDashboard className="w-10 h-10 text-white" />
             </div>
-            <h2 className="text-3xl font-black text-gray-900 tracking-tighter uppercase">OmPro Live</h2>
-            <p className="text-gray-400 mt-2 font-medium italic">
+            <h2 className="text-3xl font-black text-black tracking-tighter uppercase">OmPro Live</h2>
+            <p className="text-black mt-2 font-medium italic">
               Acesse o quadro vivo de tarefas
             </p>
           </div>
@@ -67,7 +68,7 @@ const Login: React.FC = () => {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">Usuário ou E-mail</label>
+                <label className="block text-[10px] font-black text-black uppercase tracking-widest mb-2 ml-1">Usuário ou E-mail</label>
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
                   <input
@@ -75,14 +76,14 @@ const Login: React.FC = () => {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-blue-600 outline-none font-bold transition-all"
+                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-blue-600 outline-none font-bold transition-all text-black"
                     placeholder="Ex: joao.silva"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">Senha</label>
+                <label className="block text-[10px] font-black text-black uppercase tracking-widest mb-2 ml-1">Senha</label>
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
                   <input
@@ -90,7 +91,7 @@ const Login: React.FC = () => {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-blue-600 outline-none font-bold transition-all"
+                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-blue-600 outline-none font-bold transition-all text-black"
                     placeholder="••••••••"
                   />
                 </div>
@@ -106,7 +107,7 @@ const Login: React.FC = () => {
             </button>
             
             <div className="pt-4 text-center">
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] leading-relaxed">
+              <p className="text-[10px] font-black text-black uppercase tracking-[0.15em] leading-relaxed">
                 Não tem acesso? <br/>
                 <span className="text-blue-600">Solicite uma conta com um gerente ou administrador</span>
               </p>
@@ -114,7 +115,7 @@ const Login: React.FC = () => {
           </form>
           
           <div className="p-8 bg-gray-50 border-t border-gray-100 text-center">
-             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+             <p className="text-[10px] text-black font-bold uppercase tracking-widest">
                 Sistema OmPro &copy; {new Date().getFullYear()}
              </p>
           </div>

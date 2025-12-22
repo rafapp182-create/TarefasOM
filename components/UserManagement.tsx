@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { collection, query, onSnapshot, doc, setDoc, deleteDoc, orderBy } from 'firebase/firestore';
-import { initializeApp } from 'firebase/app';
+import { initializeApp, deleteApp, getApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { db, firebaseConfig } from '../firebase';
 import { UserProfile, UserRole } from '../types';
-import { UserPlus, Trash2, User as UserIcon, Loader2, Key, Mail, ShieldAlert } from 'lucide-react';
+import { UserPlus, Trash2, User as UserIcon, Loader2, Key, Mail, ShieldAlert, AlertCircle } from 'lucide-react';
 
 const UserManagement: React.FC<{ profile: UserProfile }> = ({ profile: currentUserProfile }) => {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -18,7 +18,6 @@ const UserManagement: React.FC<{ profile: UserProfile }> = ({ profile: currentUs
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Busca usuários ordenados por nome
     const q = query(collection(db, 'users'), orderBy('name', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setUsers(snapshot.docs.map(d => d.data() as UserProfile));
@@ -38,18 +37,34 @@ const UserManagement: React.FC<{ profile: UserProfile }> = ({ profile: currentUs
     }
 
     const roleToCreate = currentUserProfile.role === 'administrador' ? 'executor' : newRole;
-
     setIsCreating(true);
+
+    // Gerar um nome de app único para esta tentativa de criação
+    const tempAppName = `CreationApp-${Date.now()}`;
+    let secondaryApp;
+
     try {
-      const slug = newName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '.');
+      // Normalização robusta do nome para o e-mail
+      const slug = newName
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "") // Remove acentos
+        .replace(/\s+/g, '.')            // Espaços viram pontos
+        .replace(/[^a-z0-9.]/g, "");     // Remove tudo que não for letra, número ou ponto
+
+      if (!slug) throw new Error("Nome inválido para gerar login.");
+      
       const technicalEmail = `${slug}@ompro.com.br`;
 
-      const secondaryApp = initializeApp(firebaseConfig, "SecondaryCreation");
+      // Inicializa app secundário para não deslogar o admin atual
+      secondaryApp = initializeApp(firebaseConfig, tempAppName);
       const secondaryAuth = getAuth(secondaryApp);
 
+      // 1. Criar no Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, technicalEmail, newPassword);
       const uid = userCredential.user.uid;
 
+      // 2. Salvar Perfil no Firestore
       await setDoc(doc(db, 'users', uid), {
         uid: uid,
         name: newName,
@@ -58,31 +73,48 @@ const UserManagement: React.FC<{ profile: UserProfile }> = ({ profile: currentUs
         createdAt: Date.now()
       });
 
+      // 3. Limpar
       await signOut(secondaryAuth);
-      // @ts-ignore
-      await secondaryApp.delete();
-
-      alert(`Usuário ${newName} criado com sucesso!\nLogin: ${technicalEmail}\nSenha: ${newPassword}`);
+      
+      alert(`Usuário criado com sucesso!\n\nLOGIN: ${technicalEmail}\nSENHA: ${newPassword}\n\nForneça estes dados ao colaborador.`);
       
       setShowAdd(false);
       setNewName('');
       setNewPassword('');
     } catch (err: any) {
-      console.error(err);
-      alert("Erro ao criar usuário: " + (err.message || "Verifique se este nome já existe."));
+      console.error("Erro detalhado ao criar usuário:", err);
+      let msg = "Erro ao criar usuário.";
+      
+      if (err.code === 'auth/email-already-in-use') {
+        msg = "Este nome de usuário já está sendo usado por outro colaborador.";
+      } else if (err.code === 'auth/invalid-email') {
+        msg = "O nome fornecido gerou um e-mail inválido.";
+      } else if (err.code === 'auth/weak-password') {
+        msg = "A senha fornecida é muito fraca.";
+      } else if (err.message) {
+        msg = err.message;
+      }
+      
+      alert(msg);
     } finally {
       setIsCreating(false);
+      // Sempre deletar o app temporário para liberar memória e evitar conflitos
+      if (secondaryApp) {
+        try {
+          await deleteApp(secondaryApp);
+        } catch (e) {
+          console.warn("Erro ao limpar app temporário", e);
+        }
+      }
     }
   };
 
   const handleDeleteUser = async (userToDelete: UserProfile) => {
-    // Impede excluir a si mesmo
     if (userToDelete.uid === currentUserProfile.uid) {
       alert("Você não pode excluir sua própria conta.");
       return;
     }
 
-    // Apenas gerentes podem excluir
     if (currentUserProfile.role !== 'gerente') {
       alert("Apenas gerentes possuem permissão para excluir usuários.");
       return;
@@ -94,13 +126,10 @@ const UserManagement: React.FC<{ profile: UserProfile }> = ({ profile: currentUs
 
     setDeletingId(userToDelete.uid);
     try {
-      // Deleta o documento do Firestore
-      const userRef = doc(db, 'users', userToDelete.uid);
-      await deleteDoc(userRef);
-      // O App.tsx do usuário deletado detectará a exclusão e o deslogará.
+      await deleteDoc(doc(db, 'users', userToDelete.uid));
     } catch (err) {
       console.error("Erro ao deletar usuário:", err);
-      alert("Erro ao remover usuário. Isso pode ser uma restrição de segurança do banco de dados.");
+      alert("Erro ao remover usuário. Verifique suas permissões.");
     } finally {
       setDeletingId(null);
     }
@@ -120,8 +149,8 @@ const UserManagement: React.FC<{ profile: UserProfile }> = ({ profile: currentUs
     <div className="p-8 max-w-5xl mx-auto space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tighter">Equipe OmPro</h2>
-          <p className="text-gray-500 text-sm italic font-medium">Gestão de acessos e permissões em tempo real.</p>
+          <h2 className="text-2xl font-black text-black uppercase tracking-tighter">Equipe OmPro</h2>
+          <p className="text-black text-sm italic font-medium">Gestão de acessos e permissões em tempo real.</p>
         </div>
         {canCreate && (
           <button 
@@ -138,20 +167,20 @@ const UserManagement: React.FC<{ profile: UserProfile }> = ({ profile: currentUs
           <form onSubmit={handleCreateUser} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Nome do Colaborador</label>
+                <label className="text-[10px] font-black text-black uppercase tracking-widest ml-1">Nome do Colaborador</label>
                 <div className="relative">
                   <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
                   <input 
                     placeholder="Ex: João Silva"
                     value={newName}
                     onChange={e => setNewName(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-blue-500 font-bold"
+                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-blue-500 font-bold text-black"
                     required
                   />
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Senha de Acesso</label>
+                <label className="text-[10px] font-black text-black uppercase tracking-widest ml-1">Senha de Acesso</label>
                 <div className="relative">
                   <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
                   <input 
@@ -159,22 +188,22 @@ const UserManagement: React.FC<{ profile: UserProfile }> = ({ profile: currentUs
                     placeholder="Mínimo 6 dígitos"
                     value={newPassword}
                     onChange={e => setNewPassword(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-blue-500 font-bold"
+                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-blue-500 font-bold text-black"
                     required
                   />
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Nível de Permissão</label>
+                <label className="text-[10px] font-black text-black uppercase tracking-widest ml-1">Nível de Permissão</label>
                 {currentUserProfile.role === 'administrador' ? (
-                  <div className="w-full p-4 bg-gray-100 border-2 border-gray-100 rounded-2xl font-bold text-gray-500 cursor-not-allowed">
+                  <div className="w-full p-4 bg-gray-100 border-2 border-gray-100 rounded-2xl font-bold text-black opacity-50 cursor-not-allowed">
                     Executor (Campo)
                   </div>
                 ) : (
                   <select 
                     value={newRole}
                     onChange={e => setNewRole(e.target.value as UserRole)}
-                    className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-blue-500 font-bold appearance-none cursor-pointer"
+                    className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-blue-500 font-bold appearance-none cursor-pointer text-black"
                   >
                     <option value="executor">Executor (Campo)</option>
                     <option value="administrador">Administrador (Gestão)</option>
@@ -196,7 +225,7 @@ const UserManagement: React.FC<{ profile: UserProfile }> = ({ profile: currentUs
       <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-gray-50 text-gray-400 text-[10px] font-black uppercase tracking-widest">
+            <thead className="bg-gray-50 text-black text-[10px] font-black uppercase tracking-widest">
               <tr>
                 <th className="px-8 py-6">Colaborador</th>
                 <th className="px-8 py-6">Login de Acesso</th>
@@ -212,11 +241,11 @@ const UserManagement: React.FC<{ profile: UserProfile }> = ({ profile: currentUs
                       <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 font-black shadow-sm shrink-0">
                         {u.name ? u.name.charAt(0).toUpperCase() : '?'}
                       </div>
-                      <span className="font-black text-gray-900 uppercase tracking-tight text-sm truncate max-w-[150px] md:max-w-none">{u.name}</span>
+                      <span className="font-black text-black uppercase tracking-tight text-sm truncate max-w-[150px] md:max-w-none">{u.name}</span>
                     </div>
                   </td>
                   <td className="px-8 py-6">
-                    <div className="flex items-center gap-2 text-xs font-bold text-gray-500">
+                    <div className="flex items-center gap-2 text-xs font-bold text-black">
                       <Mail size={14} className="text-gray-300" />
                       {u.email}
                     </div>
@@ -247,7 +276,7 @@ const UserManagement: React.FC<{ profile: UserProfile }> = ({ profile: currentUs
         </div>
         {loading && <div className="p-20 flex justify-center"><Loader2 className="animate-spin text-blue-600 w-10 h-10" /></div>}
         {!loading && users.length === 0 && (
-          <div className="p-20 text-center text-gray-400 font-black uppercase text-xs">
+          <div className="p-20 text-center text-black font-black uppercase text-xs">
             Nenhum usuário encontrado.
           </div>
         )}
