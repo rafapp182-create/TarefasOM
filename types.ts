@@ -17,12 +17,21 @@ export interface Grupo {
   createdAt: number;
 }
 
+export interface HistoryEntry {
+  timestamp: number;
+  status: TaskStatus;
+  shift?: Shift;
+  reason?: string;
+  user: string;
+  userEmail: string;
+}
+
 export interface Task {
   id: string;
   groupId: string;
   omNumber: string;
   description: string;
-  workCenter: string; // Alterado de costCenter para workCenter
+  workCenter: string;
   minDate: string;
   maxDate: string;
   status: TaskStatus;
@@ -32,6 +41,7 @@ export interface Task {
   updatedAt: number;
   updatedBy: string;
   updatedByEmail: string;
+  history?: HistoryEntry[];
 }
 
 export interface HistoryEntry {

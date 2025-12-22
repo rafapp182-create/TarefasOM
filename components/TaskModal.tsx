@@ -1,8 +1,8 @@
 
 import React, { useState } from 'react';
-import { Task, UserProfile, TaskStatus, Shift } from '../types';
-import { X, CheckCircle2, PlayCircle, XCircle, Clock, MessageSquare, Save, Info, Briefcase } from 'lucide-react';
-import { doc, updateDoc } from 'firebase/firestore';
+import { Task, UserProfile, TaskStatus, Shift, HistoryEntry } from '../types';
+import { X, CheckCircle2, PlayCircle, XCircle, Clock, MessageSquare, Save, Info, Briefcase, History, User } from 'lucide-react';
+import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 
 interface TaskModalProps {
@@ -31,13 +31,23 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, profile }) => {
 
     setLoading(true);
     try {
+      const historyEntry: HistoryEntry = {
+        timestamp: Date.now(),
+        status: newStatus,
+        shift: shift as Shift,
+        reason: reason,
+        user: profile.name,
+        userEmail: profile.email
+      };
+
       await updateDoc(doc(db, 'tarefas', task.id), {
         status: newStatus,
         shift: shift,
         reason: reason,
         updatedAt: Date.now(),
         updatedBy: profile.uid,
-        updatedByEmail: profile.email
+        updatedByEmail: profile.email,
+        history: arrayUnion(historyEntry)
       });
       onClose();
     } catch (err) {
@@ -151,12 +161,44 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, profile }) => {
           )}
 
           {activeTab === 'details' && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-3 gap-4">
-                <DetailItem label="Data Mínima" value={task.minDate} />
-                <DetailItem label="Data Máxima" value={task.maxDate} />
-                <DetailItem label="Centro Trabalho" value={task.workCenter} />
+            <div className="space-y-10 pb-10">
+              {/* Auditoria / Histórico */}
+              <div>
+                <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <History size={14} /> Histórico de Auditoria (Modificações)
+                </h4>
+                <div className="space-y-3">
+                  {task.history && task.history.length > 0 ? (
+                    [...task.history].reverse().map((entry, idx) => (
+                      <div key={idx} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-2 h-2 rounded-full ${
+                            entry.status === 'Executada' ? 'bg-emerald-500' :
+                            entry.status === 'Em andamento' ? 'bg-blue-500' :
+                            entry.status === 'Não executada' ? 'bg-rose-500' : 'bg-gray-300'
+                          }`} />
+                          <div>
+                            <p className="text-xs font-black text-gray-900 uppercase">Status: {entry.status}</p>
+                            <div className="flex items-center gap-2 text-[10px] text-gray-400 font-bold uppercase">
+                              <User size={10} /> {entry.user} ({entry.shift})
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] font-black text-gray-400 uppercase">{new Date(entry.timestamp).toLocaleString()}</p>
+                          {entry.reason && <p className="text-[10px] text-gray-500 italic mt-1 italic">"{entry.reason}"</p>}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-6 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Nenhuma modificação registrada</p>
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {/* Dados Excel */}
               <div>
                 <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                   <Info size={14} /> Metadados da Planilha Excel
@@ -214,12 +256,5 @@ const StatusBtn: React.FC<{ active: boolean; onClick: () => void; color: string;
     </button>
   );
 };
-
-const DetailItem: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <div className="bg-gray-50 p-5 rounded-3xl border border-gray-100">
-    <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1">{label}</p>
-    <p className="text-sm font-black text-gray-900">{value || '---'}</p>
-  </div>
-);
 
 export default TaskModal;

@@ -2,9 +2,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, doc, addDoc, writeBatch, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { UserProfile, Grupo, Task } from '../types';
+import { UserProfile, Grupo, Task, TaskStatus } from '../types';
 import TaskCard from './TaskCard';
-import { Trash2, Upload, Loader2, FileSpreadsheet, Settings2, Check, FolderPlus, AlertTriangle, List, Eraser, X, AlertOctagon, Search } from 'lucide-react';
+import { Trash2, Upload, Loader2, FileSpreadsheet, Settings2, Check, FolderPlus, AlertTriangle, List, Eraser, X, AlertOctagon, Search, Filter } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import TaskModal from './TaskModal';
 
@@ -24,6 +24,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingText, setProcessingText] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState<TaskStatus | 'Todos'>('Todos');
   
   // Estado para Confirmação de Exclusão
   const [confirmDelete, setConfirmDelete] = useState<{
@@ -101,16 +102,19 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     return () => unsubscribe();
   }, [activeGroupId]);
 
-  // Filtro de Busca
+  // Filtro Combinado: Busca + Status
   const filteredTasks = useMemo(() => {
-    if (!searchTerm.trim()) return tasks;
-    const lowerSearch = searchTerm.toLowerCase();
-    return tasks.filter(t => 
-      t.omNumber.toLowerCase().includes(lowerSearch) || 
-      t.description.toLowerCase().includes(lowerSearch) ||
-      t.workCenter.toLowerCase().includes(lowerSearch)
-    );
-  }, [tasks, searchTerm]);
+    return tasks.filter(t => {
+      const matchSearch = !searchTerm.trim() || 
+        t.omNumber.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.workCenter.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchStatus = filterStatus === 'Todos' || t.status === filterStatus;
+      
+      return matchSearch && matchStatus;
+    });
+  }, [tasks, searchTerm, filterStatus]);
 
   const handleAddGroup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -289,25 +293,42 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
       {activeGroup ? (
         <div className="space-y-6">
           <div className="flex flex-col xl:flex-row xl:items-center justify-between bg-white p-4 rounded-[2rem] border border-gray-100 shadow-sm gap-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 ml-2 flex-1">
-              <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 ml-2 flex-1">
+              <div className="flex items-center gap-4 shrink-0">
                 <div className="bg-blue-600 text-white p-3 rounded-2xl"><List size={20} /></div>
                 <div>
                   <span className="text-xs text-gray-400 font-black uppercase block tracking-widest">Grupo Ativo</span>
-                  <span className="text-xl font-black text-gray-900 uppercase">{activeGroup.name}</span>
+                  <span className="text-xl font-black text-gray-900 uppercase leading-none">{activeGroup.name}</span>
                 </div>
               </div>
 
-              {/* Campo de Busca */}
-              <div className="relative w-full sm:max-w-xs sm:ml-6 mt-4 sm:mt-0">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input 
-                  type="text" 
-                  placeholder="Buscar OM ou Descrição..." 
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:border-blue-600 focus:bg-white outline-none font-bold text-sm text-gray-800 transition-all"
-                />
+              {/* Filtros e Busca */}
+              <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:ml-6">
+                <div className="relative w-full sm:max-w-[240px]">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                  <input 
+                    type="text" 
+                    placeholder="OM ou Descrição..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:border-blue-600 focus:bg-white outline-none font-bold text-sm text-gray-800 transition-all"
+                  />
+                </div>
+                
+                <div className="relative w-full sm:max-w-[200px]">
+                  <Filter className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                  <select 
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value as any)}
+                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:border-blue-600 focus:bg-white outline-none font-bold text-sm text-gray-800 transition-all appearance-none cursor-pointer"
+                  >
+                    <option value="Todos">Todos os Status</option>
+                    <option value="Pendente">Pendentes</option>
+                    <option value="Em andamento">Em andamento</option>
+                    <option value="Executada">Executadas</option>
+                    <option value="Não executada">Não executadas</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -366,12 +387,19 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
             </div>
           ) : (
             <div className="py-24 text-center bg-white rounded-[3rem] border-2 border-dashed border-gray-200 flex flex-col items-center max-w-3xl mx-auto px-10">
-              {searchTerm ? (
+              {(searchTerm || filterStatus !== 'Todos') ? (
                 <>
                   <Search className="w-12 h-12 text-gray-300 mb-6" />
                   <h3 className="text-2xl font-black text-gray-900 uppercase">Nenhum resultado</h3>
-                  <p className="text-gray-500 mt-3 mb-4 font-medium italic">Não encontramos nada para "{searchTerm}" neste grupo.</p>
-                  <button onClick={() => setSearchTerm('')} className="text-blue-600 font-black uppercase text-xs hover:underline tracking-widest">Limpar busca</button>
+                  <p className="text-gray-500 mt-3 mb-4 font-medium italic">
+                    Não encontramos tarefas com os critérios selecionados neste grupo.
+                  </p>
+                  <button 
+                    onClick={() => { setSearchTerm(''); setFilterStatus('Todos'); }} 
+                    className="text-blue-600 font-black uppercase text-xs hover:underline tracking-widest"
+                  >
+                    Limpar Filtros
+                  </button>
                 </>
               ) : (
                 <>

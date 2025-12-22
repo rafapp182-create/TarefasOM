@@ -3,8 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Task, Grupo } from '../types';
-import { FileDown, Search, Loader2, Table } from 'lucide-react';
+import { FileDown, Search, Loader2, Table, FileText } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const Reports: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -56,6 +58,61 @@ const Reports: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
     XLSX.writeFile(wb, `Relatorio_LiveTask_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
+  const exportToPDF = () => {
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    // Cabeçalho
+    doc.setFontSize(18);
+    doc.text('Relatório de Manutenção - OmPro', 14, 20);
+    doc.setFontSize(10);
+    doc.text(`Gerado em: ${new Date().toLocaleString()}`, 14, 28);
+
+    const tableRows = filteredTasks.map(t => [
+      t.omNumber,
+      t.description,
+      t.workCenter,
+      t.status,
+      t.shift || 'N/A',
+      t.reason || '-',
+      t.updatedByEmail
+    ]);
+
+    autoTable(doc, {
+      startY: 35,
+      head: [['Nº OM', 'Descrição', 'C. Trabalho', 'Status', 'Turno', 'Motivo', 'Atualizado por']],
+      body: tableRows,
+      theme: 'grid',
+      headStyles: { fillColor: [30, 64, 175], fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 2 },
+      columnStyles: {
+        1: { cellWidth: 60 }, // Descrição
+        5: { cellWidth: 40 }  // Motivo
+      },
+      didDrawPage: (data) => {
+        // Rodapé em cada página
+        const pageSize = doc.internal.pageSize;
+        const pageHeight = pageSize.height ? pageSize.height : pageSize.getHeight();
+        
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        
+        // Texto solicitado
+        const footerText = 'Relatorio gerado no sistema OmPro criado por Rafael';
+        doc.text(footerText, 14, pageHeight - 10);
+        
+        // Paginação
+        const pageNumber = `Página ${data.pageNumber}`;
+        doc.text(pageNumber, pageSize.width - 25, pageHeight - 10);
+      }
+    });
+
+    doc.save(`Relatorio_OmPro_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
   return (
     <div className="p-8 space-y-6 max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -63,14 +120,24 @@ const Reports: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
           <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tighter">Relatórios de Campo</h2>
           <p className="text-gray-500 text-sm">Visualize e extraia dados consolidados das tarefas.</p>
         </div>
-        <button 
-          onClick={exportToExcel}
-          disabled={filteredTasks.length === 0}
-          className="flex items-center gap-2 bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-100 disabled:opacity-50"
-        >
-          <FileDown size={20} />
-          Exportar (.xlsx)
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button 
+            onClick={exportToExcel}
+            disabled={filteredTasks.length === 0}
+            className="flex items-center gap-2 bg-emerald-600 text-white px-6 py-3 rounded-2xl font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-100 disabled:opacity-50 text-xs"
+          >
+            <FileDown size={18} />
+            Excel (.xlsx)
+          </button>
+          <button 
+            onClick={exportToPDF}
+            disabled={filteredTasks.length === 0}
+            className="flex items-center gap-2 bg-rose-600 text-white px-6 py-3 rounded-2xl font-black uppercase tracking-widest hover:bg-rose-700 transition-all shadow-xl shadow-rose-100 disabled:opacity-50 text-xs"
+          >
+            <FileText size={18} />
+            Gerar PDF
+          </button>
+        </div>
       </div>
 
       {/* Filters Bar */}
