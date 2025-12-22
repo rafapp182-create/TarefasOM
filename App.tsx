@@ -53,6 +53,8 @@ const App: React.FC = () => {
             }
             setLoading(false);
           } else {
+            // Caso especial: Usuário existe no Auth mas o perfil no Firestore sumiu ou não foi criado
+            alert("Erro crítico: Seu perfil de acesso não foi encontrado no banco de dados. Entre em contato com o suporte.");
             signOut(auth);
             setUser(null);
             setProfile(null);
@@ -93,9 +95,9 @@ const App: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-zinc-950">
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-zinc-950 transition-colors">
         <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-        <p className="text-black dark:text-zinc-400 font-medium">Sincronizando acesso...</p>
+        <p className="text-black dark:text-zinc-400 font-black uppercase tracking-widest text-[10px]">Sincronizando Dados...</p>
       </div>
     );
   }
@@ -138,7 +140,7 @@ const App: React.FC = () => {
         <div className="flex items-center gap-2">
           <button 
             onClick={() => setIsSidebarOpen(true)}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg text-black dark:text-white"
+            className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg text-black dark:text-white transition-colors"
           >
             <Menu size={24} />
           </button>
