@@ -62,22 +62,11 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     return String(val).trim();
   };
 
-  const normalize = (k: string) => 
-    k.toLowerCase()
-     .normalize("NFD")
-     .replace(/[\u0300-\u036f]/g, "")
-     .replace(/[^a-z0-9]/g, "")
-     .trim();
-
   const findColumn = (availableKeys: string[], targets: string[]): string | null => {
+    const normalize = (k: string) => k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "").trim();
     const normalizedTargets = targets.map(normalize);
     for (const key of availableKeys) {
-      const nKey = normalize(key);
-      if (normalizedTargets.includes(nKey)) return key;
-    }
-    for (const key of availableKeys) {
-      const nKey = normalize(key);
-      if (normalizedTargets.some(t => nKey.startsWith(t) || t.startsWith(nKey))) return key;
+      if (normalizedTargets.includes(normalize(key))) return key;
     }
     return null;
   };
@@ -94,9 +83,6 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
       const taskList = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Task));
       setTasks(taskList.sort((a, b) => b.updatedAt - a.updatedAt));
       setLoading(false);
-    }, (error) => {
-      console.error("Erro real-time:", error);
-      setLoading(false);
     });
     return () => unsubscribe();
   }, [activeGroupId]);
@@ -107,9 +93,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
         t.omNumber.toLowerCase().includes(searchTerm.toLowerCase()) || 
         t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
         t.workCenter.toLowerCase().includes(searchTerm.toLowerCase());
-      
       const matchStatus = filterStatus === 'Todos' || t.status === filterStatus;
-      
       return matchSearch && matchStatus;
     });
   }, [tasks, searchTerm, filterStatus]);
@@ -125,99 +109,31 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     } catch (error) { alert("Erro ao criar grupo."); }
   };
 
-  const executeClearTasks = async () => {
-    setConfirmDelete(null);
-    setIsProcessing(true);
-    setProcessingText('Limpando lista de tarefas...');
-    try {
-      const q = query(collection(db, 'tarefas'), where('groupId', '==', activeGroupId));
-      const snapshot = await getDocs(q);
-      const docs = snapshot.docs;
-      for (let i = 0; i < docs.length; i += 500) {
-        const batch = writeBatch(db);
-        const chunk = docs.slice(i, i + 500);
-        chunk.forEach((d) => batch.delete(d.ref));
-        await batch.commit();
-      }
-    } catch (error) {
-      alert("Erro ao limpar tarefas.");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const executeDeleteGroup = async (groupId: string) => {
-    setConfirmDelete(null);
-    setIsProcessing(true);
-    setProcessingText('Excluindo grupo e tarefas...');
-    try {
-      const q = query(collection(db, 'tarefas'), where('groupId', '==', groupId));
-      const snapshot = await getDocs(q);
-      const docs = snapshot.docs;
-      for (let i = 0; i < docs.length; i += 500) {
-        const batch = writeBatch(db);
-        const chunk = docs.slice(i, i + 500);
-        chunk.forEach((d) => batch.delete(d.ref));
-        await batch.commit();
-      }
-      const batchFinal = writeBatch(db);
-      batchFinal.delete(doc(db, 'grupos', groupId));
-      await batchFinal.commit();
-    } catch (error) { 
-      alert("Erro ao excluir grupo."); 
-    } finally { 
-      setIsProcessing(false); 
-    }
-  };
-
-  const handleClearTasksRequest = () => {
-    if (profile.role !== 'gerente') return;
-    setConfirmDelete({
-      type: 'tasks',
-      title: 'Limpar Lista',
-      message: `Você está prestes a apagar permanentemente todas as ${tasks.length} tarefas deste grupo. Esta ação não pode ser desfeita.`,
-      onConfirm: executeClearTasks
-    });
-  };
-
-  const handleDeleteGroupRequest = (groupId: string, name: string) => {
-    if (profile.role !== 'gerente') return;
-    setConfirmDelete({
-      type: 'group',
-      title: 'Excluir Grupo (Aba)',
-      message: `CUIDADO! A exclusão da aba "${name}" apagará também todas as tarefas e históricos vinculados a ela para todos os usuários.`,
-      onConfirm: () => executeDeleteGroup(groupId)
-    });
-  };
-
   const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !activeGroupId) return;
-
     setIsProcessing(true);
-    setProcessingText('Processando Planilha...');
+    setProcessingText('Sincronizando Planilha...');
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
         const dataBuffer = evt.target?.result;
-        const workbook = XLSX.read(dataBuffer, { type: 'array', cellDates: false });
+        const workbook = XLSX.read(dataBuffer, { type: 'array' });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: true });
-
-        if (!jsonData || jsonData.length === 0) throw new Error("Planilha vazia.");
+        const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+        if (!jsonData.length) throw new Error("Planilha vazia.");
 
         const allKeys = Object.keys(jsonData[0]);
-        const colOM = findColumn(allKeys, ['n om', 'om', 'ordem', 'numero ordem', 'tag']);
-        const colDesc = findColumn(allKeys, ['descricao', 'texto breve', 'atividade', 'texto']);
-        const colCT = findColumn(allKeys, ['centro de trabalho', 'centro trabalho', 'ct', 'cc', 'setor']);
-        const colMin = findColumn(allKeys, ['data minima', 'inicio', 'data min', 'min']);
-        const colMax = findColumn(allKeys, ['data maxima', 'fim', 'data max', 'max']);
+        const colOM = findColumn(allKeys, ['om', 'ordem', 'tag', 'n om']);
+        const colDesc = findColumn(allKeys, ['descricao', 'atividade', 'texto']);
+        const colCT = findColumn(allKeys, ['centro trabalho', 'ct', 'setor']);
+        const colMin = findColumn(allKeys, ['data minima', 'inicio']);
+        const colMax = findColumn(allKeys, ['data maxima', 'fim']);
 
         const chunkSize = 400;
         for (let i = 0; i < jsonData.length; i += chunkSize) {
           const chunk = jsonData.slice(i, i + chunkSize);
           const batch = writeBatch(db);
-          
           chunk.forEach((row: any) => {
             const newTaskRef = doc(collection(db, 'tarefas'));
             batch.set(newTaskRef, {
@@ -236,10 +152,8 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
           });
           await batch.commit();
         }
-        alert(`${jsonData.length} tarefas importadas com sucesso!`);
-      } catch (err: any) { alert(`Erro: ${err.message}`); } finally {
+      } catch (err: any) { alert(err.message); } finally {
         setIsProcessing(false);
-        if (e.target) e.target.value = '';
       }
     };
     reader.readAsArrayBuffer(file);
@@ -248,106 +162,110 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
   const activeGroup = grupos.find(g => g.id === activeGroupId);
 
   return (
-    <div className="p-4 md:p-8 max-w-full mx-auto space-y-6">
+    <div className="p-3 md:p-8 max-w-full mx-auto space-y-4 md:space-y-6">
+      {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-black text-black flex items-center gap-2 uppercase tracking-tighter">
-            Controle de Manutenção
-            <span className="bg-emerald-500 text-white px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest animate-pulse">LIVE</span>
+          <h2 className="text-xl md:text-2xl font-black text-black flex items-center gap-2 uppercase tracking-tighter">
+            Controle Operacional
+            <span className="bg-emerald-500 text-white px-1.5 py-0.5 rounded text-[8px] md:text-[10px] font-black uppercase tracking-widest">LIVE</span>
           </h2>
-          <p className="text-sm text-black font-medium italic">Sincronização instantânea com a equipe de campo.</p>
+          <p className="text-xs md:text-sm text-black font-medium italic">Gestão de tarefas em tempo real.</p>
         </div>
         {profile.role === 'gerente' && (
-          <button onClick={() => setIsAddingGroup(true)} className="flex items-center justify-center gap-2 px-6 py-3 bg-black hover:bg-zinc-800 text-white rounded-2xl font-bold transition-all shadow-xl shadow-gray-200">
-            <FolderPlus size={20} /> Criar Aba / Grupo
+          <button onClick={() => setIsAddingGroup(true)} className="flex items-center justify-center gap-2 px-4 py-3 bg-black text-white rounded-xl font-bold transition-all text-sm w-full md:w-auto">
+            <FolderPlus size={18} /> Criar Nova Aba
           </button>
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-1 border-b border-gray-200">
+      {/* Tabs / Groups Scrolling */}
+      <div className="flex overflow-x-auto gap-1 border-b border-gray-200 pb-1 scrollbar-hide no-scrollbar">
         {grupos.map((grupo) => (
-          <button key={grupo.id} onClick={() => setActiveGroupId(grupo.id)} className={`px-8 py-5 text-sm font-black transition-all border-b-4 relative uppercase tracking-wider ${activeGroupId === grupo.id ? 'border-blue-600 text-blue-600 bg-blue-50/50' : 'border-transparent text-black hover:text-blue-600 hover:bg-gray-50'}`}>
+          <button 
+            key={grupo.id} 
+            onClick={() => setActiveGroupId(grupo.id)} 
+            className={`px-5 py-3 md:px-8 md:py-5 text-xs md:text-sm font-black transition-all border-b-4 whitespace-nowrap uppercase tracking-wider ${activeGroupId === grupo.id ? 'border-blue-600 text-blue-600 bg-blue-50/50' : 'border-transparent text-black'}`}
+          >
             {grupo.name}
           </button>
         ))}
       </div>
 
       {isAddingGroup && (
-        <div className="bg-white p-6 rounded-3xl shadow-2xl border border-blue-100 animate-in zoom-in-95 duration-200">
+        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-xl border border-blue-50">
           <form onSubmit={handleAddGroup} className="flex flex-col md:flex-row items-end gap-4">
             <div className="flex-1 w-full">
-              <label className="block text-xs font-black text-black uppercase mb-2 ml-1">Nome do Grupo</label>
-              <input autoFocus type="text" placeholder="Ex: PARADA SETOR A" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className="w-full bg-gray-50 border-2 border-gray-200 p-4 rounded-2xl focus:border-blue-500 outline-none font-black text-black" />
+              <label className="block text-[10px] font-black text-black uppercase mb-1 ml-1">Nome da Aba</label>
+              <input autoFocus type="text" placeholder="Ex: PARADA SETOR 01" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className="w-full bg-gray-50 border-2 border-gray-200 p-3 md:p-4 rounded-xl focus:border-blue-500 outline-none font-bold text-black" />
             </div>
             <div className="flex gap-2 w-full md:w-auto">
-              <button type="submit" className="flex-1 md:flex-none px-8 py-4 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 flex items-center justify-center gap-2 uppercase"><Check size={20} /> Salvar</button>
-              <button type="button" onClick={() => setIsAddingGroup(false)} className="flex-1 md:flex-none px-6 py-4 bg-gray-100 text-black font-bold rounded-2xl hover:bg-gray-200">Cancelar</button>
+              <button type="submit" className="flex-1 px-6 py-3 bg-blue-600 text-white font-black rounded-xl uppercase text-xs">Salvar</button>
+              <button type="button" onClick={() => setIsAddingGroup(false)} className="px-4 py-3 bg-gray-100 text-black font-bold rounded-xl text-xs">Sair</button>
             </div>
           </form>
         </div>
       )}
 
       {activeGroup ? (
-        <div className="space-y-6">
-          <div className="flex flex-col xl:flex-row xl:items-center justify-between bg-white p-4 rounded-[2rem] border border-gray-100 shadow-sm gap-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 ml-2 flex-1">
-              <div className="flex items-center gap-4 shrink-0">
-                <div className="bg-blue-600 text-white p-3 rounded-2xl"><List size={20} /></div>
-                <div>
-                  <span className="text-xs text-black font-black uppercase block tracking-widest">Grupo Ativo</span>
-                  <span className="text-xl font-black text-black uppercase leading-none">{activeGroup.name}</span>
-                </div>
+        <div className="space-y-4 md:space-y-6">
+          {/* Action Bar / Filters */}
+          <div className="bg-white p-3 md:p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col xl:flex-row gap-3">
+            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 flex-1">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <input 
+                  type="text" 
+                  placeholder="Buscar OM, Descrição ou CT..." 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black transition-all"
+                />
               </div>
-
-              {/* Filtros e Busca */}
-              <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:ml-6">
-                <div className="relative w-full sm:max-w-[240px]">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-black" size={18} />
-                  <input 
-                    type="text" 
-                    placeholder="OM ou Descrição..." 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:border-blue-600 focus:bg-white outline-none font-bold text-sm text-black transition-all"
-                  />
-                </div>
-                
-                <div className="relative w-full sm:max-w-[200px]">
-                  <Filter className="absolute left-4 top-1/2 -translate-y-1/2 text-black" size={18} />
-                  <select 
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value as any)}
-                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:border-blue-600 focus:bg-white outline-none font-bold text-sm text-black appearance-none cursor-pointer"
-                  >
-                    <option value="Todos">Todos os Status</option>
-                    <option value="Pendente">Pendentes</option>
-                    <option value="Em andamento">Em andamento</option>
-                    <option value="Executada">Executadas</option>
-                    <option value="Não executada">Não executadas</option>
-                  </select>
-                </div>
+              <div className="relative min-w-[160px]">
+                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <select 
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value as any)}
+                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black appearance-none cursor-pointer"
+                >
+                  <option value="Todos">Todos Status</option>
+                  <option value="Pendente">Pendentes</option>
+                  <option value="Em andamento">Em andamento</option>
+                  <option value="Executada">Executadas</option>
+                  <option value="Não executada">Não executadas</option>
+                </select>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
               {profile.role === 'gerente' && (
                 <>
-                  <label className="flex items-center gap-2 px-6 py-4 bg-emerald-600 text-white hover:bg-emerald-700 rounded-2xl cursor-pointer transition-all font-black shadow-lg shadow-emerald-100 uppercase text-xs">
-                    <Upload size={18} /> Importar
+                  <label className="flex items-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl cursor-pointer font-black uppercase text-[10px] whitespace-nowrap">
+                    <Upload size={16} /> Importar
                     <input type="file" accept=".xlsx, .xls" onChange={handleExcelImport} className="hidden" />
                   </label>
                   <button 
-                    onClick={handleClearTasksRequest}
-                    disabled={tasks.length === 0}
-                    className="flex items-center gap-2 px-6 py-4 bg-rose-100 text-rose-600 hover:bg-rose-200 rounded-2xl transition-all font-black uppercase text-xs disabled:opacity-50"
+                    onClick={() => setConfirmDelete({
+                      type: 'tasks',
+                      title: 'Limpar Lista',
+                      message: 'Apagar permanentemente todas as tarefas deste grupo?',
+                      onConfirm: executeClearTasks
+                    })}
+                    className="p-3 bg-rose-50 text-rose-600 rounded-xl"
                   >
-                    <Eraser size={18} /> Limpar Lista
+                    <Eraser size={18} />
                   </button>
                   <button 
-                    onClick={() => handleDeleteGroupRequest(activeGroup.id, activeGroup.name)} 
-                    className="p-4 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-2xl transition-all border border-rose-100"
+                    onClick={() => setConfirmDelete({
+                      type: 'group',
+                      title: 'Excluir Aba',
+                      message: `Apagar a aba "${activeGroup.name}" e todas as suas tarefas?`,
+                      onConfirm: () => executeDeleteGroup(activeGroup.id)
+                    })}
+                    className="p-3 bg-rose-50 text-rose-600 rounded-xl"
                   >
-                    <Trash2 size={20} />
+                    <Trash2 size={18} />
                   </button>
                 </>
               )}
@@ -355,116 +273,107 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
           </div>
 
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-20">
-              <Loader2 className="animate-spin text-blue-600 w-12 h-12 mb-4" />
-              <p className="text-black font-black uppercase text-xs">Sincronizando...</p>
+            <div className="flex flex-col items-center justify-center py-12">
+              <Loader2 className="animate-spin text-blue-600 w-10 h-10 mb-2" />
+              <p className="text-[10px] font-black uppercase text-black">Carregando dados...</p>
             </div>
           ) : filteredTasks.length > 0 ? (
-            <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-gray-100 border-b border-gray-200">
-                      <th className="px-6 py-5 text-[10px] font-black text-black uppercase tracking-widest">Nº OM</th>
-                      <th className="px-6 py-5 text-[10px] font-black text-black uppercase tracking-widest">Descrição</th>
-                      <th className="px-6 py-5 text-[10px] font-black text-black uppercase tracking-widest">Centro de Trabalho</th>
-                      <th className="px-6 py-5 text-[10px] font-black text-black uppercase tracking-widest text-center">Data Mínima</th>
-                      <th className="px-6 py-5 text-[10px] font-black text-black uppercase tracking-widest text-center">Data Máxima</th>
-                      <th className="px-6 py-5 text-[10px] font-black text-black uppercase tracking-widest text-center">Status</th>
-                      <th className="px-6 py-5 text-[10px] font-black text-black uppercase tracking-widest text-right">Ações</th>
+            <div className="space-y-4">
+              {/* Desktop View: Table */}
+              <div className="hidden md:block bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+                <table className="w-full text-left">
+                  <thead className="bg-gray-50 border-b border-gray-100">
+                    <tr>
+                      <th className="px-6 py-4 text-[10px] font-black text-black uppercase tracking-widest">Nº OM</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-black uppercase tracking-widest">Descrição</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-black uppercase tracking-widest">CT</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-black uppercase tracking-widest text-center">Datas</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-black uppercase tracking-widest text-center">Status</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-black uppercase tracking-widest text-right">Ação</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-gray-50">
                     {filteredTasks.map(task => (
                       <TaskCard key={task.id} task={task} onOpenDetails={() => setSelectedTask(task)} profile={profile} variant="list" />
                     ))}
                   </tbody>
                 </table>
               </div>
+
+              {/* Mobile View: Cards */}
+              <div className="md:hidden grid grid-cols-1 gap-3">
+                {filteredTasks.map(task => (
+                  <TaskCard key={task.id} task={task} onOpenDetails={() => setSelectedTask(task)} profile={profile} variant="card" />
+                ))}
+              </div>
             </div>
           ) : (
-            <div className="py-24 text-center bg-white rounded-[3rem] border-2 border-dashed border-gray-200 flex flex-col items-center max-w-3xl mx-auto px-10">
-              {(searchTerm || filterStatus !== 'Todos') ? (
-                <>
-                  <Search className="w-12 h-12 text-black mb-6" />
-                  <h3 className="text-2xl font-black text-black uppercase">Nenhum resultado</h3>
-                  <p className="text-black mt-3 mb-4 font-medium italic">
-                    Não encontramos tarefas com os critérios selecionados neste grupo.
-                  </p>
-                  <button 
-                    onClick={() => { setSearchTerm(''); setFilterStatus('Todos'); }} 
-                    className="text-blue-600 font-black uppercase text-xs hover:underline tracking-widest"
-                  >
-                    Limpar Filtros
-                  </button>
-                </>
-              ) : (
-                <>
-                  <FileSpreadsheet className="w-12 h-12 text-blue-500 mb-6" />
-                  <h3 className="text-2xl font-black text-black uppercase">Aba Vazia</h3>
-                  <p className="text-black mt-3 mb-10 font-medium">Importe sua planilha de manutenção para começar.</p>
-                  {profile.role === 'gerente' && (
-                    <label className="flex items-center gap-4 px-10 py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-3xl cursor-pointer transition-all font-black text-lg shadow-2xl">
-                      <Upload size={24} /> IMPORTAR EXCEL AGORA
-                      <input type="file" accept=".xlsx, .xls" onChange={handleExcelImport} className="hidden" />
-                    </label>
-                  )}
-                </>
-              )}
+            <div className="py-20 text-center bg-white rounded-3xl border-2 border-dashed border-gray-200">
+              <FileSpreadsheet className="mx-auto text-blue-300 w-12 h-12 mb-4" />
+              <p className="text-sm font-black text-black uppercase">Nenhuma tarefa encontrada</p>
+              <p className="text-xs text-black italic mt-1">Refine seus filtros ou realize uma importação.</p>
             </div>
           )}
         </div>
       ) : (
-        <div className="text-center py-32 bg-gray-50 rounded-[3rem] border-2 border-dashed border-gray-200">
-          <Settings2 className="mx-auto w-16 h-16 text-black mb-6" />
-          <h3 className="text-xl font-black text-black uppercase">Nenhuma aba selecionada</h3>
+        <div className="text-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
+          <Settings2 className="mx-auto w-12 h-12 text-gray-300 mb-4" />
+          <h3 className="text-sm font-black text-black uppercase tracking-widest">Selecione uma aba para começar</h3>
         </div>
       )}
 
-      {/* Modal de Confirmação Customizado */}
+      {/* Reused generic handlers for cleaner code */}
+      {selectedTask && <TaskModal task={selectedTask} onClose={() => setSelectedTask(null)} profile={profile} />}
       {confirmDelete && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[250] flex items-center justify-center p-6 animate-in fade-in duration-200">
-          <div className="bg-white rounded-[2.5rem] max-w-lg w-full overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
-            <div className="bg-rose-600 p-8 flex items-center gap-4 text-white">
-              <div className="p-3 bg-white/20 rounded-2xl"><AlertOctagon size={32} /></div>
-              <div>
-                <h3 className="text-xl font-black uppercase tracking-tighter">Atenção Gerente</h3>
-                <p className="text-xs font-bold uppercase opacity-80 tracking-widest">{confirmDelete.title}</p>
-              </div>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[250] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-center animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertOctagon size={32} />
             </div>
-            <div className="p-8">
-              <p className="text-black font-bold text-lg leading-relaxed">{confirmDelete.message}</p>
-              <div className="mt-10 flex flex-col gap-3">
-                <button 
-                  onClick={confirmDelete.onConfirm}
-                  className="w-full py-5 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl shadow-rose-100 flex items-center justify-center gap-2"
-                >
-                  <Trash2 size={20} /> Confirmar e Excluir Agora
-                </button>
-                <button 
-                  onClick={() => setConfirmDelete(null)}
-                  className="w-full py-4 bg-gray-50 text-black font-black uppercase tracking-widest rounded-2xl hover:bg-gray-200 transition-all"
-                >
-                  Cancelar Operação
-                </button>
-              </div>
+            <h3 className="text-lg font-black text-black uppercase mb-2">{confirmDelete.title}</h3>
+            <p className="text-sm text-black mb-6 font-medium leading-tight">{confirmDelete.message}</p>
+            <div className="flex flex-col gap-2">
+              <button onClick={confirmDelete.onConfirm} className="w-full py-4 bg-rose-600 text-white rounded-xl font-black uppercase text-xs">Confirmar Exclusão</button>
+              <button onClick={() => setConfirmDelete(null)} className="w-full py-3 bg-gray-100 text-black rounded-xl font-bold text-xs">Cancelar</button>
             </div>
           </div>
         </div>
       )}
-
       {isProcessing && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[300] flex items-center justify-center p-6">
-          <div className="bg-white rounded-[3rem] p-12 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95">
-            <Loader2 className="w-16 h-16 text-blue-600 animate-spin mx-auto mb-6" />
-            <h3 className="text-2xl font-black text-black uppercase">{processingText}</h3>
-            <p className="text-black mt-4 text-sm font-medium">Não feche esta página até concluir.</p>
+          <div className="text-center">
+            <Loader2 className="w-16 h-16 text-blue-600 animate-spin mx-auto mb-4" />
+            <h3 className="text-xl font-black text-white uppercase">{processingText}</h3>
           </div>
         </div>
       )}
-      {selectedTask && <TaskModal task={selectedTask} onClose={() => setSelectedTask(null)} profile={profile} />}
     </div>
   );
+
+  async function executeClearTasks() {
+    setConfirmDelete(null);
+    setIsProcessing(true);
+    try {
+      const q = query(collection(db, 'tarefas'), where('groupId', '==', activeGroupId));
+      const snapshot = await getDocs(q);
+      const batch = writeBatch(db);
+      snapshot.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    } catch (e) { alert("Erro ao limpar tarefas."); } finally { setIsProcessing(false); }
+  }
+
+  async function executeDeleteGroup(groupId: string) {
+    setConfirmDelete(null);
+    setIsProcessing(true);
+    try {
+      const q = query(collection(db, 'tarefas'), where('groupId', '==', groupId));
+      const snapshot = await getDocs(q);
+      const batch = writeBatch(db);
+      snapshot.docs.forEach(d => batch.delete(d.ref));
+      batch.delete(doc(db, 'grupos', groupId));
+      await batch.commit();
+    } catch (e) { alert("Erro ao excluir aba."); } finally { setIsProcessing(false); }
+  }
 };
 
 export default Dashboard;

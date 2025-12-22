@@ -12,7 +12,6 @@ import {
   ClipboardList, 
   TrendingUp, 
   Activity,
-  ArrowUpRight,
   PieChart,
   CalendarDays
 } from 'lucide-react';
@@ -30,15 +29,7 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
     return () => unsubscribe();
   }, []);
 
-  // Explicitly typing stats to ensure properties are recognized as numbers for arithmetic operations
-  // Renamed nãoExecutada to naoExecutada to avoid non-ASCII character issues in some environments
-  const stats = useMemo<{
-    total: number;
-    executada: number;
-    emAndamento: number;
-    naoExecutada: number;
-    pendente: number;
-  }>(() => {
+  const stats = useMemo(() => {
     return {
       total: tasks.length,
       executada: tasks.filter(t => t.status === 'Executada').length,
@@ -48,15 +39,13 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
     };
   }, [tasks]);
 
-  // Typing shiftData explicitly as Record<string, number> to help Object.values inference
-  const shiftData = useMemo<Record<string, number>>(() => ({
+  const shiftData = useMemo(() => ({
     A: tasks.filter(t => t.shift === 'A' && t.status === 'Executada').length,
     B: tasks.filter(t => t.shift === 'B' && t.status === 'Executada').length,
     C: tasks.filter(t => t.shift === 'C' && t.status === 'Executada').length,
     D: tasks.filter(t => t.shift === 'D' && t.status === 'Executada').length,
   }), [tasks]);
 
-  // Calculation of production in the last 7 days for the line chart
   const trendData = useMemo(() => {
     const last7Days = Array.from({ length: 7 }, (_, i) => {
       const d = new Date();
@@ -79,100 +68,71 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
     });
   }, [tasks]);
 
-  // Using a cast to number[] for Object.values(shiftData) to resolve spread assignment error
   const maxShiftTasks = Math.max(...(Object.values(shiftData) as number[]), 1);
   const maxTrendTasks = Math.max(...trendData.map(d => d.value), 1);
   const completionRate = stats.total > 0 ? Math.round((stats.executada / stats.total) * 100) : 0;
 
-  // Pre-calculate percentages for the donut chart to ensure arithmetic safety
-  const pExec = stats.total > 0 ? (stats.executada / stats.total) * 100 : 0;
-  const pAndamento = stats.total > 0 ? (stats.emAndamento / stats.total) * 100 : 0;
-  const pPendente = stats.total > 0 ? (stats.pendente / stats.total) * 100 : 0;
+  // Use explicit numeric types and wrap additions in parentheses for template literals
+  // This resolves the error: "The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type."
+  const pExec: number = stats.total > 0 ? (stats.executada / stats.total) * 100 : 0;
+  const pAndamento: number = stats.total > 0 ? (stats.emAndamento / stats.total) * 100 : 0;
+  const pPendente: number = stats.total > 0 ? (stats.pendente / stats.total) * 100 : 0;
 
-  // Fix: Pre-calculate percentage strings for the conic-gradient stops to avoid arithmetic operations 
-  // or modulo-like syntax directly in the template literal, which causes TS errors in some environments.
   const stop1 = `${pExec}%`;
-  const stop2 = `${pExec + pAndamento}%`;
-  const stop3 = `${pExec + pAndamento + pPendente}%`;
+  const stop2 = `${(pExec + pAndamento)}%`;
+  const stop3 = `${(pExec + pAndamento + pPendente)}%`;
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-20">
-        <Activity className="animate-spin text-blue-600 mb-4" size={48} />
-        <p className="text-black font-black uppercase tracking-widest text-xs">Calculando indicadores...</p>
+      <div className="flex flex-col items-center justify-center h-full p-12">
+        <Activity className="animate-spin text-blue-600 mb-4" size={40} />
+        <p className="text-[10px] font-black uppercase tracking-widest text-black">Calculando Indicadores...</p>
       </div>
     );
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6 md:space-y-8">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-black text-black uppercase tracking-tighter">Dashboards OmPro</h2>
-          <p className="text-black font-medium italic">Indicadores de performance industrial em tempo real.</p>
+          <h2 className="text-2xl md:text-3xl font-black text-black uppercase tracking-tighter">Dashboards OmPro</h2>
+          <p className="text-xs md:text-sm text-black font-medium italic">Performance em tempo real.</p>
         </div>
-        <div className="bg-white px-6 py-4 rounded-3xl border border-gray-200 shadow-sm flex items-center gap-4">
+        <div className="bg-white px-4 py-3 md:px-6 md:py-4 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4 w-full md:w-auto">
           <div className="text-right">
-            <p className="text-[10px] font-black text-black uppercase tracking-widest">Efficiency Rate</p>
-            <p className="text-2xl font-black text-blue-600 leading-none">{completionRate}%</p>
+            <p className="text-[10px] font-black text-black uppercase tracking-widest">Eficiência Total</p>
+            <p className="text-xl md:text-2xl font-black text-blue-600 leading-none">{completionRate}%</p>
           </div>
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${completionRate > 80 ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
+          <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center ${completionRate > 80 ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
             <TrendingUp size={24} />
           </div>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard icon={<ClipboardList size={24} />} label="Total OMs" value={stats.total} color="blue" />
-        <StatCard icon={<CheckCircle2 size={24} />} label="Concluídas" value={stats.executada} color="emerald" subtitle={`${Math.round((stats.executada/stats.total || 0) * 100)}% de sucesso`} />
-        <StatCard icon={<Clock size={24} />} label="Em Campo" value={stats.emAndamento} color="amber" />
-        <StatCard icon={<AlertCircle size={24} />} label="Paradas/Não Exec" value={stats.naoExecutada} color="rose" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
+        <StatCard icon={<ClipboardList size={20} />} label="Total OMs" value={stats.total} color="blue" />
+        <StatCard icon={<CheckCircle2 size={20} />} label="Concluídas" value={stats.executada} color="emerald" />
+        <StatCard icon={<Clock size={20} />} label="Em Campo" value={stats.emAndamento} color="amber" />
+        <StatCard icon={<AlertCircle size={20} />} label="Falhas" value={stats.naoExecutada} color="rose" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Gráfico de Barras - Produção por Turno */}
-        <div className="lg:col-span-2 bg-white rounded-[2.5rem] p-8 border border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-lg font-black text-black uppercase tracking-tight flex items-center gap-3">
-              <Users size={20} className="text-blue-600" /> Produção por Turno
-            </h3>
-            <div className="flex items-center gap-4">
-               <div className="flex items-center gap-2">
-                 <div className="w-3 h-3 rounded-full bg-blue-500" />
-                 <span className="text-[10px] font-black text-black uppercase tracking-widest">Executadas</span>
-               </div>
-            </div>
-          </div>
-          
-          <div className="relative h-72 flex items-end">
-            {/* Eixo Y */}
-            <div className="absolute left-0 h-full w-px bg-gray-100 flex flex-col justify-between py-2 text-[10px] font-black text-black/40 pr-2 items-end">
-              <span>{maxShiftTasks}</span>
-              <span>{Math.round(maxShiftTasks/2)}</span>
-              <span>0</span>
-            </div>
-
-            <div className="flex-1 flex items-end justify-around ml-8 h-64 gap-4 px-4 border-b border-gray-100">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
+        {/* Gráfico de Barras */}
+        <div className="lg:col-span-2 bg-white rounded-3xl p-5 md:p-8 border border-gray-100 shadow-sm overflow-hidden">
+          <h3 className="text-base md:text-lg font-black text-black uppercase tracking-tight flex items-center gap-3 mb-6">
+            <Users size={18} className="text-blue-600" /> Produção por Turno
+          </h3>
+          <div className="relative h-60 md:h-72 flex items-end">
+            <div className="flex-1 flex items-end justify-around h-full gap-2 md:gap-4 px-2 border-b border-gray-100">
               {Object.entries(shiftData).map(([shift, count]) => {
                 const height = (count / maxShiftTasks) * 100;
                 return (
-                  <div key={shift} className="flex-1 flex flex-col items-center group relative h-full justify-end">
-                    <div className="absolute -top-6 text-[10px] font-black text-black opacity-0 group-hover:opacity-100 transition-opacity bg-white px-2 py-1 rounded shadow-sm border border-gray-100 z-10">
-                      {count} OMs
-                    </div>
-                    <div 
-                      style={{ height: `${Math.max(height, 2)}%` }}
-                      className={`w-full max-w-[50px] rounded-t-xl transition-all duration-700 ease-out cursor-pointer relative bar-grow ${
-                        shift === 'A' ? 'bg-blue-600' :
-                        shift === 'B' ? 'bg-indigo-600' :
-                        shift === 'C' ? 'bg-violet-600' : 'bg-purple-600'
-                      }`}
-                    >
-                      <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                    <div className="mt-4 text-xs font-black text-black uppercase">Turno {shift}</div>
+                  <div key={shift} className="flex-1 flex flex-col items-center h-full justify-end">
+                    <div className="text-[10px] font-black text-black mb-1">{count}</div>
+                    <div style={{ height: `${Math.max(height, 5)}%` }} className={`w-full max-w-[40px] rounded-t-lg transition-all duration-1000 ${shift === 'A' ? 'bg-blue-600' : shift === 'B' ? 'bg-indigo-600' : shift === 'C' ? 'bg-violet-600' : 'bg-purple-600'}`} />
+                    <div className="mt-2 text-[10px] font-black text-black uppercase">{shift}</div>
                   </div>
                 );
               })}
@@ -180,112 +140,75 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
           </div>
         </div>
 
-        {/* Donut Chart - Distribuição de Status */}
-        <div className="bg-white rounded-[2.5rem] p-8 border border-gray-200 shadow-sm flex flex-col">
-          <h3 className="text-lg font-black text-black uppercase tracking-tight flex items-center gap-3 mb-8">
-            <PieChart size={20} className="text-blue-600" /> Status Geral
+        {/* Donut Chart */}
+        <div className="bg-white rounded-3xl p-5 md:p-8 border border-gray-100 shadow-sm flex flex-col">
+          <h3 className="text-base md:text-lg font-black text-black uppercase tracking-tight flex items-center gap-3 mb-6">
+            <PieChart size={18} className="text-blue-600" /> Status Geral
           </h3>
-          
-          <div className="flex-1 flex flex-col justify-center items-center">
-             <div className="relative w-48 h-48 mb-10">
+          <div className="flex flex-col items-center">
+             <div className="relative w-32 h-32 md:w-40 md:h-40 mb-6">
                 <div 
-                  className="w-full h-full rounded-full transition-all duration-1000"
+                  className="w-full h-full rounded-full"
                   style={{
                     background: stats.total > 0 
-                      ? `conic-gradient(
-                          #10b981 0% ${stop1}, 
-                          #3b82f6 ${stop1} ${stop2},
-                          #f59e0b ${stop2} ${stop3},
-                          #f43f5e ${stop3} 100%
-                        )`
+                      ? `conic-gradient(#10b981 0% ${stop1}, #3b82f6 ${stop1} ${stop2}, #f59e0b ${stop2} ${stop3}, #f43f5e ${stop3} 100%)`
                       : '#f3f4f6'
                   }}
                 >
-                  <div className="absolute inset-6 bg-white rounded-full flex flex-col items-center justify-center shadow-inner">
-                    <span className="text-[10px] font-black text-black uppercase leading-none opacity-50">Volume Total</span>
-                    <span className="text-4xl font-black text-black">{stats.total}</span>
+                  <div className="absolute inset-4 md:inset-5 bg-white rounded-full flex flex-col items-center justify-center shadow-inner">
+                    <span className="text-xl md:text-2xl font-black text-black">{stats.total}</span>
                   </div>
                 </div>
              </div>
-
-             <div className="w-full space-y-3">
+             <div className="w-full space-y-2">
                 <LegendItem color="bg-emerald-500" label="Executadas" value={stats.executada} />
                 <LegendItem color="bg-blue-500" label="Em Andamento" value={stats.emAndamento} />
                 <LegendItem color="bg-amber-500" label="Pendentes" value={stats.pendente} />
-                <LegendItem color="bg-rose-500" label="Não Executadas" value={stats.naoExecutada} />
+                <LegendItem color="bg-rose-500" label="Não Exec." value={stats.naoExecutada} />
              </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Gráfico de Linha - Tendência de Produção (7 dias) */}
-        <div className="bg-white rounded-[2.5rem] p-8 border border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-lg font-black text-black uppercase tracking-tight flex items-center gap-3">
-              <CalendarDays size={20} className="text-blue-600" /> Tendência de Execução (7d)
-            </h3>
-            <span className="text-[10px] font-black text-black uppercase bg-blue-50 px-3 py-1 rounded-full">Histórico Diário</span>
-          </div>
-
-          <div className="h-48 w-full flex items-end justify-between px-2 pb-6 border-b border-gray-100">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
+        <div className="bg-white rounded-3xl p-5 md:p-8 border border-gray-100 shadow-sm">
+          <h3 className="text-base font-black text-black uppercase tracking-tight flex items-center gap-3 mb-6">
+            <CalendarDays size={18} className="text-blue-600" /> Tendência (7d)
+          </h3>
+          <div className="h-40 w-full flex items-end justify-between px-2 pb-2 border-b border-gray-100">
              {trendData.map((day, i) => {
                const height = (day.value / maxTrendTasks) * 100;
                return (
-                 <div key={i} className="flex-1 flex flex-col items-center group h-full justify-end relative">
-                   <div className="absolute -top-6 text-[10px] font-black text-black opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                     {day.value} OMs
-                   </div>
-                   <div 
-                    style={{ height: `${Math.max(height, 10)}%` }}
-                    className="w-2 bg-blue-600 rounded-full transition-all duration-500 group-hover:w-4 group-hover:bg-blue-800"
-                   />
-                   <div className="mt-4 text-[9px] font-black text-black uppercase">{day.label}</div>
+                 <div key={i} className="flex-1 flex flex-col items-center h-full justify-end">
+                   <div style={{ height: `${Math.max(height, 10)}%` }} className="w-1.5 md:w-2 bg-blue-600 rounded-full" />
+                   <div className="mt-2 text-[8px] font-black text-black uppercase">{day.label}</div>
                  </div>
                );
              })}
           </div>
-          <div className="mt-4 flex items-center gap-2 text-[10px] font-bold text-black opacity-60 italic">
-            <Activity size={12} /> Total executado no período: {trendData.reduce((acc, curr) => acc + curr.value, 0)} OMs
-          </div>
         </div>
 
-        {/* Progress by Group */}
-        <div className="bg-white rounded-[2.5rem] p-8 border border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-lg font-black text-black uppercase tracking-tight flex items-center gap-3">
-              <BarChart3 size={20} className="text-blue-600" /> Progresso por Aba/Grupo
-            </h3>
-          </div>
-          <div className="space-y-6 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-            {grupos.length > 0 ? grupos.map(grupo => {
-              const groupTasks = tasks.filter(t => t.groupId === grupo.id);
-              const groupDone = groupTasks.filter(t => t.status === 'Executada').length;
-              const perc = groupTasks.length > 0 ? Math.round((groupDone / groupTasks.length) * 100) : 0;
-              
+        <div className="bg-white rounded-3xl p-5 md:p-8 border border-gray-100 shadow-sm">
+          <h3 className="text-base font-black text-black uppercase tracking-tight flex items-center gap-3 mb-6">
+            <BarChart3 size={18} className="text-blue-600" /> Progresso por Aba
+          </h3>
+          <div className="space-y-4 max-h-[240px] overflow-y-auto no-scrollbar">
+            {grupos.map(grupo => {
+              const gTasks = tasks.filter(t => t.groupId === grupo.id);
+              const gDone = gTasks.filter(t => t.status === 'Executada').length;
+              const perc = gTasks.length > 0 ? Math.round((gDone / gTasks.length) * 100) : 0;
               return (
-                <div key={grupo.id} className="space-y-2">
-                  <div className="flex justify-between items-end">
-                    <span className="text-sm font-black text-black uppercase tracking-tight">{grupo.name}</span>
-                    <span className="text-xs font-black text-blue-600">{perc}%</span>
+                <div key={grupo.id} className="space-y-1">
+                  <div className="flex justify-between items-end text-[10px] font-black uppercase">
+                    <span className="truncate max-w-[140px]">{grupo.name}</span>
+                    <span className="text-blue-600">{perc}%</span>
                   </div>
-                  <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-blue-600 rounded-full transition-all duration-1000" 
-                      style={{ width: `${perc}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between text-[10px] font-bold text-black uppercase opacity-60">
-                    <span>{groupDone} concluídas</span>
-                    <span>{groupTasks.length} total</span>
+                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-600 rounded-full transition-all duration-1000" style={{ width: `${perc}%` }} />
                   </div>
                 </div>
               );
-            }) : (
-              <div className="text-center py-20 text-black">
-                <p className="text-xs font-black uppercase tracking-widest">Nenhuma aba disponível</p>
-              </div>
-            )}
+            })}
           </div>
         </div>
       </div>
@@ -294,33 +217,27 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
 };
 
 const LegendItem: React.FC<{ color: string; label: string; value: number }> = ({ color, label, value }) => (
-  <div className="flex items-center justify-between border-b border-gray-50 pb-2 last:border-0">
-    <div className="flex items-center gap-3">
-      <div className={`w-3 h-3 rounded-full ${color}`} />
-      <span className="text-[10px] font-black text-black uppercase tracking-widest">{label}</span>
+  <div className="flex items-center justify-between text-[10px] font-black uppercase border-b border-gray-50 pb-1.5 last:border-0">
+    <div className="flex items-center gap-2">
+      <div className={`w-2 h-2 rounded-full ${color}`} />
+      <span>{label}</span>
     </div>
-    <span className="text-xs font-black text-black">{value}</span>
+    <span>{value}</span>
   </div>
 );
 
-const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number; color: string; subtitle?: string }> = ({ icon, label, value, color, subtitle }) => {
-  const colors: Record<string, string> = {
-    blue: 'bg-blue-600 shadow-blue-100 text-white border-blue-700',
-    emerald: 'bg-emerald-500 shadow-emerald-100 text-white border-emerald-600',
-    amber: 'bg-amber-500 shadow-amber-100 text-white border-amber-600',
-    rose: 'bg-rose-500 shadow-rose-100 text-white border-rose-600',
+const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number; color: string }> = ({ icon, label, value, color }) => {
+  const themes: Record<string, string> = {
+    blue: 'bg-blue-600 text-white',
+    emerald: 'bg-emerald-500 text-white',
+    amber: 'bg-amber-500 text-white',
+    rose: 'bg-rose-500 text-white',
   };
-
   return (
-    <div className={`p-8 rounded-[2.5rem] border-b-8 transition-all hover:translate-y-[-4px] ${colors[color]}`}>
-      <div className="flex justify-between items-start mb-6">
-        <div className="p-3 bg-white/20 rounded-2xl">{icon}</div>
-      </div>
-      <div>
-        <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">{label}</p>
-        <p className="text-4xl font-black leading-none tracking-tighter">{value}</p>
-        {subtitle && <p className="text-[10px] font-bold mt-3 opacity-90 uppercase tracking-tight bg-black/10 px-2 py-1 rounded w-fit">{subtitle}</p>}
-      </div>
+    <div className={`p-4 md:p-6 rounded-2xl shadow-sm ${themes[color]}`}>
+      <div className="mb-2 md:mb-4 opacity-70 scale-90 md:scale-100">{icon}</div>
+      <p className="text-[8px] md:text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">{label}</p>
+      <p className="text-xl md:text-3xl font-black leading-none">{value}</p>
     </div>
   );
 };
