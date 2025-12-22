@@ -47,7 +47,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
         </td>
         <td className="px-6 py-4 text-center">
           <div className="text-[10px] font-black text-black dark:text-zinc-500 opacity-60">
-            {task.minDate || '-'} > {task.maxDate || '-'}
+            {/* Correção do caractere > que causava erro no Vercel */}
+            {task.minDate || '-'} &rarr; {task.maxDate || '-'}
           </div>
         </td>
         <td className="px-6 py-4 text-center">
