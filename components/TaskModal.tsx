@@ -70,29 +70,29 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, profile }) => {
               <span className="bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-widest">
                 OM {task.omNumber}
               </span>
-              <span className="text-gray-300">/</span>
-              <span className="text-gray-400 text-xs font-bold uppercase tracking-widest flex items-center gap-1">
-                <Briefcase size={12} /> {task.workCenter}
+              <span className="text-black">/</span>
+              <span className="text-black text-xs font-bold uppercase tracking-widest flex items-center gap-1">
+                <Briefcase size={12} className="text-black" /> {task.workCenter}
               </span>
             </div>
-            <h3 className="text-2xl font-black text-gray-900 leading-tight uppercase tracking-tighter">{task.description}</h3>
+            <h3 className="text-2xl font-black text-black leading-tight uppercase tracking-tighter">{task.description}</h3>
           </div>
           <button onClick={onClose} className="p-3 hover:bg-gray-100 rounded-full transition-colors">
-            <X size={28} className="text-gray-400" />
+            <X size={28} className="text-black" />
           </button>
         </div>
 
         {/* Navigation */}
-        <div className="flex border-b border-gray-50 px-8 shrink-0 bg-gray-50/30">
+        <div className="flex border-b border-gray-100 px-8 shrink-0 bg-gray-50">
           <button 
             onClick={() => setActiveTab('update')}
-            className={`px-6 py-4 text-xs font-black uppercase tracking-widest transition-all border-b-4 ${activeTab === 'update' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400'}`}
+            className={`px-6 py-4 text-xs font-black uppercase tracking-widest transition-all border-b-4 ${activeTab === 'update' ? 'border-blue-600 text-blue-600' : 'border-transparent text-black'}`}
           >
             Atualizar Status
           </button>
           <button 
             onClick={() => setActiveTab('details')}
-            className={`px-6 py-4 text-xs font-black uppercase tracking-widest transition-all border-b-4 ${activeTab === 'details' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400'}`}
+            className={`px-6 py-4 text-xs font-black uppercase tracking-widest transition-all border-b-4 ${activeTab === 'details' ? 'border-blue-600 text-blue-600' : 'border-transparent text-black'}`}
           >
             Dados do Excel
           </button>
@@ -102,7 +102,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, profile }) => {
           {activeTab === 'update' && (
             <div className="space-y-8">
               <div>
-                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-4">Escolha o novo estado</label>
+                <label className="block text-xs font-black text-black uppercase tracking-widest mb-4">Escolha o novo estado</label>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <StatusBtn 
                     active={newStatus === 'Executada'} 
@@ -124,15 +124,15 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, profile }) => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div>
-                  <label className="flex items-center gap-2 text-xs font-black text-gray-400 uppercase tracking-widest mb-4">
-                    <Clock size={16} /> Turno <span className="text-rose-500">*</span>
+                  <label className="flex items-center gap-2 text-xs font-black text-black uppercase tracking-widest mb-4">
+                    <Clock size={16} className="text-black" /> Turno <span className="text-rose-500">*</span>
                   </label>
                   <div className="flex gap-3">
                     {shifts.map(s => (
                       <button
                         key={s}
                         onClick={() => setShift(s)}
-                        className={`w-14 h-14 rounded-2xl border-4 font-black text-lg transition-all ${shift === s ? 'bg-blue-600 border-blue-200 text-white shadow-xl shadow-blue-100' : 'bg-gray-50 border-gray-100 text-gray-300 hover:border-gray-200'}`}
+                        className={`w-14 h-14 rounded-2xl border-4 font-black text-lg transition-all ${shift === s ? 'bg-blue-600 border-blue-200 text-white shadow-xl shadow-blue-100' : 'bg-gray-100 border-gray-200 text-black hover:border-blue-600'}`}
                       >
                         {s}
                       </button>
@@ -142,15 +142,15 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, profile }) => {
 
                 {(newStatus === 'Em andamento' || newStatus === 'Não executada') && (
                   <div className="animate-in fade-in slide-in-from-right-4">
-                    <label className="flex items-center gap-2 text-xs font-black text-gray-400 uppercase tracking-widest mb-4">
-                      <MessageSquare size={16} /> Motivo / Observação <span className="text-rose-500">*</span>
+                    <label className="flex items-center gap-2 text-xs font-black text-black uppercase tracking-widest mb-4">
+                      <MessageSquare size={16} className="text-black" /> Motivo / Observação <span className="text-rose-500">*</span>
                     </label>
                     <textarea
                       autoFocus
                       value={reason}
                       onChange={(e) => setReason(e.target.value)}
                       placeholder="Descreva o motivo da alteração..."
-                      className="w-full h-32 bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 text-sm font-bold text-gray-700 focus:border-blue-500 outline-none resize-none"
+                      className="w-full h-32 bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 text-sm font-bold text-black focus:border-blue-500 outline-none resize-none"
                     />
                   </div>
                 )}
@@ -167,43 +167,43 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, profile }) => {
                 <div className="space-y-3">
                   {task.history && task.history.length > 0 ? (
                     [...task.history].reverse().slice(0, 10).map((entry, idx) => (
-                      <div key={idx} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div key={idx} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                           <div className={`w-2 h-2 rounded-full ${
                             entry.status === 'Executada' ? 'bg-emerald-500' :
                             entry.status === 'Em andamento' ? 'bg-blue-500' :
-                            entry.status === 'Não executada' ? 'bg-rose-500' : 'bg-gray-300'
+                            entry.status === 'Não executada' ? 'bg-rose-500' : 'bg-gray-400'
                           }`} />
                           <div>
-                            <p className="text-xs font-black text-gray-900 uppercase">{entry.status}</p>
-                            <div className="flex items-center gap-2 text-[10px] text-gray-400 font-bold uppercase">
+                            <p className="text-xs font-black text-black uppercase">{entry.status}</p>
+                            <div className="flex items-center gap-2 text-[10px] text-black font-bold uppercase opacity-80">
                               <User size={10} /> {entry.user} | Turno {entry.shift}
                             </div>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-black text-gray-400 uppercase">{new Date(entry.timestamp).toLocaleString()}</p>
-                          {entry.reason && <p className="text-[10px] text-gray-500 italic mt-1 italic leading-tight max-w-[200px]">"{entry.reason}"</p>}
+                          <p className="text-[10px] font-black text-black uppercase">{new Date(entry.timestamp).toLocaleString()}</p>
+                          {entry.reason && <p className="text-[10px] text-black italic mt-1 leading-tight max-w-[200px]">"{entry.reason}"</p>}
                         </div>
                       </div>
                     ))
                   ) : (
                     <div className="text-center py-6 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Nenhum registro encontrado</p>
+                      <p className="text-xs font-bold text-black uppercase tracking-widest">Nenhum registro encontrado</p>
                     </div>
                   )}
                 </div>
               </div>
 
               <div>
-                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                  <Info size={14} /> Dados Completos do Excel
+                <h4 className="text-[10px] font-black text-black uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <Info size={14} className="text-black" /> Dados Completos do Excel
                 </h4>
-                <div className="bg-gray-50 rounded-3xl border border-gray-100 overflow-hidden divide-y divide-gray-100">
+                <div className="bg-gray-100 rounded-3xl border border-gray-200 overflow-hidden divide-y divide-gray-200">
                   {Object.entries(task.excelData).map(([key, value]) => (
                     <div key={key} className="flex justify-between items-center p-4 hover:bg-white transition-colors">
-                      <span className="text-xs font-black text-gray-400 uppercase tracking-tighter mr-4">{key}</span>
-                      <span className="text-sm font-bold text-gray-900 text-right">{String(value)}</span>
+                      <span className="text-xs font-black text-black uppercase tracking-tighter mr-4 opacity-70">{key}</span>
+                      <span className="text-sm font-bold text-black text-right">{String(value)}</span>
                     </div>
                   ))}
                 </div>
@@ -213,7 +213,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, profile }) => {
         </div>
 
         {activeTab === 'update' && (
-          <div className="p-8 border-t border-gray-100 bg-gray-50/50 flex flex-col md:flex-row gap-4 shrink-0">
+          <div className="p-8 border-t border-gray-100 bg-gray-100/50 flex flex-col md:flex-row gap-4 shrink-0">
             <button
               onClick={handleUpdate}
               disabled={loading}
@@ -223,7 +223,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, profile }) => {
             </button>
             <button
               onClick={onClose}
-              className="flex-1 py-5 bg-white border-2 border-gray-100 text-gray-400 rounded-[1.5rem] font-black uppercase tracking-widest hover:bg-gray-50 transition-all active:scale-95"
+              className="flex-1 py-5 bg-white border-2 border-gray-200 text-black rounded-[1.5rem] font-black uppercase tracking-widest hover:bg-gray-100 transition-all active:scale-95"
             >
               Voltar
             </button>

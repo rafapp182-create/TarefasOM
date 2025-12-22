@@ -26,15 +26,9 @@ const Sidebar: React.FC<SidebarProps> = ({ profile, currentView, setView, onClos
   const handleLogout = async () => {
     if (window.confirm("Deseja realmente sair do sistema OmPro?")) {
       try {
-        // 1. Desloga do Firebase
         await signOut(auth);
-        
-        // 2. Limpa o armazenamento local se houver
         localStorage.clear();
         sessionStorage.clear();
-
-        // 3. Força o recarregamento total da página. 
-        // Como o App.tsx monitora o onAuthStateChanged, ele voltará para o <Login /> automaticamente.
         window.location.href = window.location.origin; 
       } catch (error) {
         console.error("Erro ao deslogar:", error);
@@ -48,7 +42,7 @@ const Sidebar: React.FC<SidebarProps> = ({ profile, currentView, setView, onClos
       <div className="p-6 border-b border-gray-100 relative shrink-0">
         <button 
           onClick={onClose}
-          className="md:hidden absolute right-4 top-4 p-2 text-gray-400 hover:text-gray-600"
+          className="md:hidden absolute right-4 top-4 p-2 text-black hover:text-gray-600"
         >
           <X size={24} />
         </button>
@@ -58,18 +52,18 @@ const Sidebar: React.FC<SidebarProps> = ({ profile, currentView, setView, onClos
             <LayoutDashboard className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-black tracking-tighter text-gray-900 uppercase">OmPro</h1>
+            <h1 className="text-xl font-black tracking-tighter text-black uppercase">OmPro</h1>
             <p className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] leading-none">Management</p>
           </div>
         </div>
         
-        <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl border border-gray-100">
-          <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-sm border border-gray-100 shrink-0">
+        <div className="flex items-center gap-3 p-4 bg-gray-100 rounded-2xl border border-gray-200">
+          <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center shadow-sm border border-gray-200 shrink-0">
             {getRoleIcon()}
           </div>
           <div className="overflow-hidden">
-            <p className="text-sm font-black text-gray-900 truncate leading-tight uppercase tracking-tight">{profile.name}</p>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">{profile.role}</p>
+            <p className="text-sm font-black text-black truncate leading-tight uppercase tracking-tight">{profile.name}</p>
+            <p className="text-[10px] text-black font-bold uppercase tracking-widest mt-1 opacity-80">{profile.role}</p>
           </div>
         </div>
       </div>
@@ -123,9 +117,9 @@ const NavItem: React.FC<{ icon: React.ReactNode; label: string; active?: boolean
   <button 
     type="button"
     onClick={onClick}
-    className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-black uppercase tracking-widest text-xs ${active ? 'bg-blue-600 text-white shadow-xl shadow-blue-100' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-900'}`}
+    className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-black uppercase tracking-widest text-xs ${active ? 'bg-blue-600 text-white shadow-xl shadow-blue-100' : 'text-black hover:bg-gray-100'}`}
   >
-    <div className={active ? 'scale-110' : ''}>{icon}</div>
+    <div className={active ? 'scale-110' : 'text-black'}>{icon}</div>
     <span>{label}</span>
   </button>
 );
