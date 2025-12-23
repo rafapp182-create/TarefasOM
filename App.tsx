@@ -10,7 +10,7 @@ import Sidebar from './components/Sidebar';
 import UserManagement from './components/UserManagement';
 import Reports from './components/Reports';
 import Overview from './components/Overview';
-import { Loader2, Menu } from 'lucide-react';
+import { Loader2, Menu, User as UserIcon, Circle } from 'lucide-react';
 
 export type ViewType = 'dashboard' | 'tarefas' | 'usuarios' | 'relatorios';
 export type ThemeType = 'light' | 'dark';
@@ -54,7 +54,7 @@ const App: React.FC = () => {
             }
             setLoading(false);
           } else {
-            alert("Erro crítico: Seu perfil de acesso não foi encontrado no banco de dados. Entre em contato com o suporte.");
+            alert("Erro crítico: Seu perfil de acesso não foi encontrado no banco de dados.");
             signOut(auth);
             setUser(null);
             setProfile(null);
@@ -117,7 +117,7 @@ const App: React.FC = () => {
             setActiveGroupId={setActiveGroupId}
           />
         ) : (
-          <Overview grupos={grupos} />
+          <Overview grupos={grupos} profile={profile} />
         );
       case 'usuarios': return <UserManagement profile={profile} />;
       case 'relatorios': return <Reports grupos={grupos} />;
@@ -135,6 +135,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-gray-100 dark:bg-zinc-950 overflow-hidden relative transition-colors duration-300">
+      {/* Mobile Header */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 flex items-center justify-between px-4 z-30">
         <div className="flex items-center gap-2">
           <button 
@@ -145,8 +146,11 @@ const App: React.FC = () => {
           </button>
           <span className="font-black text-blue-600 tracking-tighter uppercase">OmPro</span>
         </div>
-        <div className="text-[10px] font-black text-black dark:text-white uppercase tracking-widest bg-gray-50 dark:bg-zinc-800 px-2 py-1 rounded">
-          {profile.role}
+        <div className="flex items-center gap-2 bg-gray-50 dark:bg-zinc-800 px-3 py-1.5 rounded-full border border-gray-100 dark:border-zinc-700">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-[10px] font-black text-black dark:text-white uppercase tracking-tighter truncate max-w-[80px]">
+            {profile.name.split(' ')[0]}
+          </span>
         </div>
       </div>
 
@@ -171,7 +175,26 @@ const App: React.FC = () => {
         />
       </div>
 
-      <main className="flex-1 overflow-y-auto overflow-x-hidden pt-16 md:pt-0 custom-scrollbar">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden pt-16 md:pt-0 custom-scrollbar relative">
+        {/* Desktop User Header */}
+        <header className="hidden md:flex items-center justify-end px-8 py-4 bg-white/50 dark:bg-zinc-950/50 backdrop-blur-md sticky top-0 z-20 border-b border-gray-100 dark:border-zinc-900">
+          <div className="flex items-center gap-4 bg-white dark:bg-zinc-900 px-5 py-2.5 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800">
+            <div className="flex flex-col items-end">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none">Status</span>
+                <div className="flex items-center gap-1 bg-emerald-50 dark:bg-emerald-900/10 px-1.5 py-0.5 rounded">
+                   <Circle size={6} className="fill-emerald-500 text-emerald-500 animate-pulse" />
+                   <span className="text-[8px] font-black text-emerald-600 dark:text-emerald-400 uppercase">Online</span>
+                </div>
+              </div>
+              <span className="text-sm font-black text-black dark:text-white uppercase tracking-tight mt-1">{profile.name}</span>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-100 dark:shadow-none transition-transform hover:rotate-6">
+              <UserIcon size={20} />
+            </div>
+          </div>
+        </header>
+
         {renderView()}
       </main>
     </div>
