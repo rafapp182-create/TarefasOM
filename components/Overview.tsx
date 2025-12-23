@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Task, Grupo } from '../types';
-import { CheckCircle2, Clock, AlertCircle, BarChart3, Users, ClipboardList, TrendingUp, Activity, PieChart } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, BarChart3, Users, ClipboardList, TrendingUp, Activity, PieChart, Layers } from 'lucide-react';
 
 const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -27,6 +27,21 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
     return { total, executada, emAndamento, naoExecutada, pendente };
   }, [tasks]);
 
+  const groupStats = useMemo(() => {
+    return grupos.map(grupo => {
+      const groupTasks = tasks.filter(t => t.groupId === grupo.id);
+      const total = groupTasks.length;
+      const done = groupTasks.filter(t => t.status === 'Executada').length;
+      const perc = total > 0 ? Math.round((done / total) * 100) : 0;
+      return {
+        name: grupo.name,
+        total,
+        done,
+        perc
+      };
+    }).sort((a, b) => b.perc - a.perc);
+  }, [tasks, grupos]);
+
   const shiftData = useMemo(() => ({
     A: tasks.filter(t => t.shift === 'A' && t.status === 'Executada').length,
     B: tasks.filter(t => t.shift === 'B' && t.status === 'Executada').length,
@@ -37,10 +52,9 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
   const maxShiftTasks = Math.max(...(Object.values(shiftData) as number[]), 1);
   const completionRate = stats.total > 0 ? Math.round((stats.executada / stats.total) * 100) : 0;
   
-  // Casting explícito para garantir que o TS não reclame de operações aritméticas
-  const pExec: number = stats.total > 0 ? (stats.executada as number / stats.total as number) * 100 : 0;
-  const pAndamento: number = stats.total > 0 ? (stats.emAndamento as number / stats.total as number) * 100 : 0;
-  const pPendente: number = stats.total > 0 ? (stats.pendente as number / stats.total as number) * 100 : 0;
+  const pExec: number = stats.total > 0 ? (stats.executada / stats.total) * 100 : 0;
+  const pAndamento: number = stats.total > 0 ? (stats.emAndamento / stats.total) * 100 : 0;
+  const pPendente: number = stats.total > 0 ? (stats.pendente / stats.total) * 100 : 0;
 
   const stops = [
     `${pExec.toFixed(2)}%`, 
@@ -64,7 +78,7 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
         </div>
         <div className="bg-white dark:bg-zinc-900 px-6 py-4 rounded-2xl border border-gray-100 dark:border-zinc-800 shadow-sm flex items-center gap-4">
           <div className="text-right">
-            <p className="text-[10px] font-black text-zinc-500 uppercase">Eficiência</p>
+            <p className="text-[10px] font-black text-zinc-500 uppercase">Eficiência Global</p>
             <p className="text-2xl font-black text-blue-600">{completionRate}%</p>
           </div>
           <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${completionRate > 80 ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
@@ -81,6 +95,7 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
+        {/* Gráfico de Turnos */}
         <div className="lg:col-span-2 bg-white dark:bg-zinc-900 rounded-3xl p-6 md:p-8 border border-gray-100 dark:border-zinc-800 shadow-sm">
           <h3 className="text-sm font-black text-black dark:text-white uppercase mb-8 flex items-center gap-3">
             <Users size={18} className="text-blue-600" /> Produção por Turno
@@ -101,12 +116,14 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
             })}
           </div>
         </div>
+
+        {/* Status Geral */}
         <div className="bg-white dark:bg-zinc-900 rounded-3xl p-6 md:p-8 border border-gray-100 dark:border-zinc-800 flex flex-col items-center">
           <h3 className="text-sm font-black text-black dark:text-white uppercase mb-8 self-start">
             <PieChart size={18} className="text-blue-600" /> Status Geral
           </h3>
           <div 
-            className="relative w-32 h-32 md:w-40 md:h-40 mb-6 flex items-center justify-center rounded-full" 
+            className="relative w-32 h-32 md:w-40 md:h-40 mb-6 flex items-center justify-center rounded-full transition-all duration-500" 
             style={{ background: stats.total > 0 ? `conic-gradient(#10b981 0% ${stops[0]}, #3b82f6 ${stops[0]} ${stops[1]}, #f59e0b ${stops[1]} ${stops[2]}, #f43f5e ${stops[2]} 100%)` : '#e5e7eb' }}
           >
             <div className="absolute inset-4 md:inset-5 bg-white dark:bg-zinc-900 rounded-full flex items-center justify-center shadow-inner">
@@ -118,6 +135,45 @@ const Overview: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
             <LegendItem color="bg-blue-500" label="Andamento" value={stats.emAndamento} />
             <LegendItem color="bg-amber-500" label="Pendentes" value={stats.pendente} />
             <LegendItem color="bg-rose-500" label="Não Exec." value={stats.naoExecutada} />
+          </div>
+        </div>
+
+        {/* Novo: Desempenho por Grupos (Abas) */}
+        <div className="lg:col-span-3 bg-white dark:bg-zinc-900 rounded-[2.5rem] p-6 md:p-8 border border-gray-100 dark:border-zinc-800 shadow-sm">
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="text-sm font-black text-black dark:text-white uppercase flex items-center gap-3">
+              <Layers size={18} className="text-blue-600" /> Eficiência por Aba
+            </h3>
+            <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Ranking de Execução</span>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
+            {groupStats.map((g, idx) => (
+              <div key={idx} className="space-y-2 group">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block mb-0.5">Setor / Aba</span>
+                    <span className="text-sm font-black text-black dark:text-white uppercase truncate block max-w-[200px]">{g.name}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xl font-black text-black dark:text-white">{g.perc}%</span>
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase">{g.done} de {g.total} OMs</p>
+                  </div>
+                </div>
+                <div className="h-3 w-full bg-gray-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                  <div 
+                    className={`h-full transition-all duration-1000 ease-out rounded-full ${g.perc === 100 ? 'bg-emerald-500' : g.perc > 50 ? 'bg-blue-600' : 'bg-amber-500'}`}
+                    style={{ width: `${g.perc}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+            {groupStats.length === 0 && (
+              <div className="col-span-full py-12 text-center">
+                <Activity size={32} className="mx-auto text-zinc-200 mb-2" />
+                <p className="text-[10px] font-black text-zinc-400 uppercase">Nenhuma aba disponível para análise</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -138,7 +194,7 @@ const LegendItem: React.FC<{ color: string; label: string; value: number }> = ({
 const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number; color: string }> = ({ icon, label, value, color }) => {
   const themes: Record<string, string> = { blue: 'bg-blue-600', emerald: 'bg-emerald-500', amber: 'bg-amber-500', rose: 'bg-rose-500' };
   return (
-    <div className={`p-6 rounded-3xl shadow-lg text-white ${themes[color]}`}>
+    <div className={`p-6 rounded-3xl shadow-lg text-white ${themes[color]} transition-transform hover:scale-[1.02] cursor-default`}>
       <div className="mb-4 opacity-70">{icon}</div>
       <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">{label}</p>
       <p className="text-3xl font-black">{value}</p>
