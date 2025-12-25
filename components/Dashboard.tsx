@@ -4,9 +4,10 @@ import { collection, query, where, onSnapshot, doc, addDoc, writeBatch, getDocs 
 import { db } from '../firebase';
 import { UserProfile, Grupo, Task, TaskStatus } from '../types';
 import TaskCard from './TaskCard';
-import { Trash2, Upload, Loader2, FileSpreadsheet, Settings2, FolderPlus, Search, Filter, Eraser, AlertOctagon } from 'lucide-react';
+import { Trash2, Upload, Loader2, FileSpreadsheet, Settings2, FolderPlus, Search, Filter, Eraser, AlertOctagon, XCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import TaskModal from './TaskModal';
+import ImportMappingModal from './ImportMappingModal';
 
 interface DashboardProps {
   profile: UserProfile;
@@ -27,6 +28,10 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
   const [filterStatus, setFilterStatus] = useState<TaskStatus | 'Todos'>('Todos');
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'group' | 'tasks'; title: string; message: string; onConfirm: () => void; } | null>(null);
 
+  const [showMapping, setShowMapping] = useState(false);
+  const [excelHeaders, setExcelHeaders] = useState<string[]>([]);
+  const [excelDataPending, setExcelDataPending] = useState<any[]>([]);
+
   useEffect(() => {
     if (grupos.length > 0 && activeGroupId && !grupos.find(g => g.id === activeGroupId)) {
       setActiveGroupId(grupos[0].id);
@@ -35,21 +40,45 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     }
   }, [grupos, activeGroupId]);
 
-  const formatExcelValue = (val: any): string => {
-    if (val === undefined || val === null) return '';
-    if (val instanceof Date) {
-      return `${String(val.getUTCDate()).padStart(2, '0')}/${String(val.getUTCMonth() + 1).padStart(2, '0')}/${val.getUTCFullYear()}`;
-    }
-    return String(val).trim();
+  /**
+   * Converte string DD/MM/AAAA em timestamp para ordenação
+   */
+  const getDateTimestamp = (dateStr: string): number => {
+    if (!dateStr || typeof dateStr !== 'string') return Infinity; // Sem data vai para o fim
+    const parts = dateStr.split('/');
+    if (parts.length !== 3) return Infinity;
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const year = parseInt(parts[2], 10);
+    const d = new Date(year, month, day);
+    return isNaN(d.getTime()) ? Infinity : d.getTime();
   };
 
-  const findColumn = (availableKeys: string[], targets: string[]): string | null => {
-    const normalize = (k: string) => k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "").trim();
-    const normalizedTargets = targets.map(normalize);
-    for (const key of availableKeys) {
-      if (normalizedTargets.includes(normalize(key))) return key;
+  const formatExcelValue = (val: any): string => {
+    if (val === undefined || val === null || val === '') return '';
+    if (val instanceof Date) {
+      if (isNaN(val.getTime())) return '';
+      const day = String(val.getDate()).padStart(2, '0');
+      const month = String(val.getMonth() + 1).padStart(2, '0');
+      const year = val.getFullYear();
+      return `${day}/${month}/${year}`;
     }
-    return null;
+    if (typeof val === 'number' && val > 40000 && val < 60000) {
+      const date = XLSX.SSF.parse_date_code(val);
+      const day = String(date.d).padStart(2, '0');
+      const month = String(date.m).padStart(2, '0');
+      const year = date.y;
+      return `${day}/${month}/${year}`;
+    }
+    const str = String(val).trim();
+    if (str.includes('-') && !isNaN(Date.parse(str))) {
+      const d = new Date(str);
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    }
+    return str;
   };
 
   useEffect(() => {
@@ -62,20 +91,34 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     const q = query(collection(db, 'tarefas'), where('groupId', '==', activeGroupId));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const taskList = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Task));
-      setTasks(taskList.sort((a, b) => b.updatedAt - a.updatedAt));
+      setTasks(taskList);
       setLoading(false);
     });
     return () => unsubscribe();
   }, [activeGroupId]);
 
   const filteredTasks = useMemo(() => {
-    return tasks.filter(t => {
+    const result = tasks.filter(t => {
       const matchSearch = !searchTerm.trim() || 
         t.omNumber.toLowerCase().includes(searchTerm.toLowerCase()) || 
         t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
         t.workCenter.toLowerCase().includes(searchTerm.toLowerCase());
+      
       const matchStatus = filterStatus === 'Todos' || t.status === filterStatus;
+
       return matchSearch && matchStatus;
+    });
+
+    // Ordenação por minDate crescente
+    return result.sort((a, b) => {
+      const timeA = getDateTimestamp(a.minDate);
+      const timeB = getDateTimestamp(b.minDate);
+      
+      if (timeA === timeB) {
+        // Se as datas forem iguais, ordena por OM ou última atualização
+        return b.updatedAt - a.updatedAt;
+      }
+      return timeA - timeB;
     });
   }, [tasks, searchTerm, filterStatus]);
 
@@ -90,48 +133,64 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     } catch (error) { console.error(error); }
   };
 
-  const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleExcelFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !activeGroupId) return;
     setIsProcessing(true);
-    setProcessingText('Sincronizando Planilha...');
+    setProcessingText('Analisando Planilha...');
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
         const dataBuffer = evt.target?.result;
-        const workbook = XLSX.read(dataBuffer, { type: 'array' });
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
-        if (!jsonData.length) throw new Error("Planilha vazia.");
-
-        const allKeys = Object.keys(jsonData[0]);
-        const colOM = findColumn(allKeys, ['om', 'ordem', 'tag', 'n om']);
-        const colDesc = findColumn(allKeys, ['descricao', 'atividade', 'texto']);
-        const colCT = findColumn(allKeys, ['centro trabalho', 'ct', 'setor']);
-        const colMin = findColumn(allKeys, ['data minima', 'inicio']);
-        const colMax = findColumn(allKeys, ['data maxima', 'fim']);
-
-        const batch = writeBatch(db);
-        jsonData.forEach((row: any) => {
-          const newTaskRef = doc(collection(db, 'tarefas'));
-          batch.set(newTaskRef, {
-            groupId: activeGroupId,
-            omNumber: colOM ? formatExcelValue(row[colOM]) : 'S/N',
-            description: colDesc ? formatExcelValue(row[colDesc]) : 'Sem descrição',
-            workCenter: colCT ? formatExcelValue(row[colCT]) : 'N/A',
-            minDate: colMin ? formatExcelValue(row[colMin]) : '',
-            maxDate: colMax ? formatExcelValue(row[colMax]) : '',
-            status: 'Pendente',
-            excelData: row,
-            updatedAt: Date.now(),
-            updatedBy: profile.uid,
-            updatedByEmail: profile.email
-          });
+        const workbook = XLSX.read(dataBuffer, { type: 'array', cellDates: true, cellNF: true, cellText: false });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' }) as any[][];
+        const headerIndex = rows.findIndex(row => row.filter(cell => String(cell).trim() !== '').length >= 2);
+        if (headerIndex === -1) throw new Error("Planilha vazia.");
+        const rawHeaders = rows[headerIndex];
+        const headers: string[] = [];
+        rawHeaders.forEach(h => {
+          let name = String(h || '').trim();
+          if (name && !name.startsWith('__EMPTY')) headers.push(name);
         });
-        await batch.commit();
-      } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); }
+        if (headers.length === 0) throw new Error("Sem cabeçalhos.");
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { range: headerIndex, defval: '', blankrows: false });
+        setExcelHeaders(headers);
+        setExcelDataPending(jsonData);
+        setShowMapping(true);
+      } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); e.target.value = ''; }
     };
     reader.readAsArrayBuffer(file);
+  };
+
+  const processMappingAndImport = async (mapping: Record<string, string>) => {
+    setShowMapping(false);
+    setIsProcessing(true);
+    setProcessingText('Sincronizando Banco...');
+    try {
+      const batch = writeBatch(db);
+      excelDataPending.forEach((row: any) => {
+        if (!Object.values(row).some(v => v !== '')) return;
+        const newTaskRef = doc(collection(db, 'tarefas'));
+        batch.set(newTaskRef, {
+          groupId: activeGroupId,
+          omNumber: mapping.omNumber ? formatExcelValue(row[mapping.omNumber]) : 'S/N',
+          description: mapping.description ? formatExcelValue(row[mapping.description]) : 'Sem descrição',
+          workCenter: mapping.workCenter ? formatExcelValue(row[mapping.workCenter]) : 'N/A',
+          minDate: mapping.minDate ? formatExcelValue(row[mapping.minDate]) : '',
+          maxDate: mapping.maxDate ? formatExcelValue(row[mapping.maxDate]) : '',
+          status: 'Pendente',
+          excelData: row,
+          updatedAt: Date.now(),
+          updatedBy: profile.uid,
+          updatedByEmail: profile.email,
+          history: []
+        });
+      });
+      await batch.commit();
+      setExcelDataPending([]);
+    } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); }
   };
 
   const activeGroup = grupos.find(g => g.id === activeGroupId);
@@ -182,49 +241,51 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
 
       {activeGroup ? (
         <div className="space-y-4 md:space-y-6 animate-in fade-in duration-500">
-          <div className="bg-white dark:bg-zinc-900 p-3 md:p-4 rounded-2xl border border-gray-100 dark:border-zinc-800 shadow-sm flex flex-col xl:flex-row gap-3">
-            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 flex-1">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                <input 
-                  type="text" 
-                  placeholder="Buscar OM, Descrição ou CT..." 
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black dark:text-white transition-all"
-                />
+          <div className="bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-gray-100 dark:border-zinc-800 shadow-sm">
+            <div className="flex flex-col xl:flex-row gap-4">
+              <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 flex-1">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <input 
+                    type="text" 
+                    placeholder="Buscar OM, Descrição ou CT..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black dark:text-white transition-all"
+                  />
+                </div>
+                <div className="relative min-w-[160px]">
+                  <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <select 
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value as any)}
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black dark:text-white appearance-none cursor-pointer"
+                  >
+                    <option value="Todos">Todos Status</option>
+                    <option value="Pendente">Pendentes</option>
+                    <option value="Em andamento">Em andamento</option>
+                    <option value="Executada">Executadas</option>
+                    <option value="Não executada">Não executadas</option>
+                  </select>
+                </div>
               </div>
-              <div className="relative min-w-[160px]">
-                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                <select 
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value as any)}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black dark:text-white appearance-none cursor-pointer"
-                >
-                  <option value="Todos">Todos Status</option>
-                  <option value="Pendente">Pendentes</option>
-                  <option value="Em andamento">Em andamento</option>
-                  <option value="Executada">Executadas</option>
-                  <option value="Não executada">Não executadas</option>
-                </select>
-              </div>
-            </div>
 
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-              {profile.role === 'gerente' && (
-                <>
-                  <label className="flex items-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl cursor-pointer font-black uppercase text-[10px] whitespace-nowrap">
-                    <Upload size={16} /> Importar
-                    <input type="file" accept=".xlsx, .xls" onChange={handleExcelImport} className="hidden" />
-                  </label>
-                  <button onClick={() => setConfirmDelete({ type: 'tasks', title: 'Limpar Lista', message: 'Apagar permanentemente todas as tarefas deste grupo?', onConfirm: executeClearTasks })} className="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-xl">
-                    <Eraser size={18} />
-                  </button>
-                  <button onClick={() => setConfirmDelete({ type: 'group', title: 'Excluir Aba', message: `Apagar a aba "${activeGroup.name}" e todas as suas tarefas?`, onConfirm: () => executeDeleteGroup(activeGroup.id) })} className="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-xl">
-                    <Trash2 size={18} />
-                  </button>
-                </>
-              )}
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                {profile.role === 'gerente' && (
+                  <>
+                    <label className="flex items-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl cursor-pointer font-black uppercase text-[10px] whitespace-nowrap hover:bg-emerald-700 transition-colors shadow-lg">
+                      <Upload size={16} /> Importar Colunas
+                      <input type="file" accept=".xlsx, .xls" onChange={handleExcelFileSelect} className="hidden" />
+                    </label>
+                    <button onClick={() => setConfirmDelete({ type: 'tasks', title: 'Limpar Lista', message: 'Apagar tudo deste grupo?', onConfirm: executeClearTasks })} className="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-xl hover:bg-rose-100 transition-colors">
+                      <Eraser size={18} />
+                    </button>
+                    <button onClick={() => setConfirmDelete({ type: 'group', title: 'Excluir Aba', message: `Apagar a aba "${activeGroup.name}" e todas as suas tarefas?`, onConfirm: () => executeDeleteGroup(activeGroup.id) })} className="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-xl hover:bg-rose-100 transition-colors">
+                      <Trash2 size={18} />
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
@@ -242,7 +303,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
                       <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest">Nº OM</th>
                       <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest">Descrição</th>
                       <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest">CT</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest text-center">Datas</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest text-center">Início (Cresc.)</th>
                       <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest text-center">Status</th>
                       <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest text-right">Ação</th>
                     </tr>
@@ -263,7 +324,15 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
           ) : (
             <div className="py-20 text-center bg-white dark:bg-zinc-900 rounded-3xl border-2 border-dashed border-gray-200 dark:border-zinc-800">
               <FileSpreadsheet className="mx-auto text-blue-300 dark:text-zinc-700 w-12 h-12 mb-4" />
-              <p className="text-sm font-black text-black dark:text-white uppercase">Nenhuma tarefa encontrada</p>
+              <p className="text-sm font-black text-black dark:text-white uppercase">Nenhuma tarefa corresponde aos filtros</p>
+              {(searchTerm || filterStatus !== 'Todos') && (
+                <button 
+                  onClick={() => { setSearchTerm(''); setFilterStatus('Todos'); }}
+                  className="mt-4 text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline"
+                >
+                  Limpar todos os filtros
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -275,12 +344,11 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
       )}
 
       {selectedTask && <TaskModal task={selectedTask} onClose={() => setSelectedTask(null)} profile={profile} />}
+      {showMapping && <ImportMappingModal headers={excelHeaders} onCancel={() => { setShowMapping(false); setExcelDataPending([]); }} onConfirm={processMappingAndImport} />}
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[250] flex items-center justify-center p-4">
           <div className="bg-white dark:bg-zinc-900 rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl">
-            <div className="w-16 h-16 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertOctagon size={32} />
-            </div>
+            <div className="w-16 h-16 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4"><AlertOctagon size={32} /></div>
             <h3 className="text-lg font-black text-black dark:text-white uppercase mb-2">{confirmDelete.title}</h3>
             <p className="text-sm text-black dark:text-zinc-400 mb-6 font-medium leading-tight">{confirmDelete.message}</p>
             <div className="flex flex-col gap-2">
@@ -291,8 +359,8 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
         </div>
       )}
       {isProcessing && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[300] flex items-center justify-center p-6">
-          <div className="text-center">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[300] flex items-center justify-center p-6 text-center">
+          <div>
             <Loader2 className="w-16 h-16 text-blue-600 animate-spin mx-auto mb-4" />
             <h3 className="text-xl font-black text-white uppercase">{processingText}</h3>
           </div>
@@ -302,7 +370,8 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
   );
 
   async function executeClearTasks() {
-    setConfirmDelete(null); setIsProcessing(true);
+    if (!activeGroupId) return;
+    setConfirmDelete(null); setIsProcessing(true); setProcessingText('Limpando Lista...');
     try {
       const q = query(collection(db, 'tarefas'), where('groupId', '==', activeGroupId));
       const snapshot = await getDocs(q);
@@ -313,7 +382,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
   }
 
   async function executeDeleteGroup(groupId: string) {
-    setConfirmDelete(null); setIsProcessing(true);
+    setConfirmDelete(null); setIsProcessing(true); setProcessingText('Excluindo Aba...');
     try {
       const q = query(collection(db, 'tarefas'), where('groupId', '==', groupId));
       const snapshot = await getDocs(q);
@@ -321,6 +390,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
       snapshot.docs.forEach(d => batch.delete(d.ref));
       batch.delete(doc(db, 'grupos', groupId));
       await batch.commit();
+      setActiveGroupId(null);
     } catch (e) { console.error(e); } finally { setIsProcessing(false); }
   }
 };
