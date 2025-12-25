@@ -10,6 +10,7 @@ import Sidebar from './components/Sidebar';
 import UserManagement from './components/UserManagement';
 import Reports from './components/Reports';
 import Overview from './components/Overview';
+import ChangePasswordModal from './components/ChangePasswordModal';
 import { Loader2, Menu, User as UserIcon } from 'lucide-react';
 
 export type ViewType = 'dashboard' | 'tarefas' | 'usuarios' | 'relatorios';
@@ -23,6 +24,7 @@ const App: React.FC = () => {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const [theme, setTheme] = useState<ThemeType>(() => {
     const saved = localStorage.getItem('ompro-theme');
     return (saved === 'dark' || saved === 'light') ? saved as ThemeType : 'light';
@@ -45,7 +47,6 @@ const App: React.FC = () => {
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
-        // Busca perfil em tempo real
         unsubscribeProfile = onSnapshot(doc(db, 'users', firebaseUser.uid), (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data() as UserProfile;
@@ -122,7 +123,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-gray-100 dark:bg-zinc-950 overflow-hidden relative transition-colors duration-300">
-      {/* Mobile Header - Sem indicador online */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 flex items-center justify-between px-4 z-30">
         <div className="flex items-center gap-2">
           <button onClick={() => setIsSidebarOpen(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg text-black dark:text-white transition-colors">
@@ -149,11 +149,11 @@ const App: React.FC = () => {
           toggleTheme={toggleTheme} 
           setView={(view) => { setCurrentView(view); setIsSidebarOpen(false); }} 
           onClose={() => setIsSidebarOpen(false)} 
+          onChangePassword={() => setShowChangePassword(true)}
         />
       </div>
 
       <main className="flex-1 overflow-y-auto overflow-x-hidden pt-16 md:pt-0 custom-scrollbar relative bg-gray-50 dark:bg-zinc-950">
-        {/* Desktop User Header - Sem indicador online */}
         <header className="hidden md:flex items-center justify-end px-8 py-4 bg-white/50 dark:bg-zinc-950/50 backdrop-blur-md sticky top-0 z-20 border-b border-gray-100 dark:border-zinc-900">
           <div className="flex items-center gap-4 bg-white dark:bg-zinc-900 px-5 py-2.5 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800">
             <div className="flex flex-col items-end">
@@ -167,6 +167,10 @@ const App: React.FC = () => {
         </header>
         {renderView()}
       </main>
+
+      {showChangePassword && (
+        <ChangePasswordModal onClose={() => setShowChangePassword(false)} />
+      )}
     </div>
   );
 };

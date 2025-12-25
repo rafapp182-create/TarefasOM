@@ -3,7 +3,7 @@ import React from 'react';
 import { UserProfile } from '../types';
 import { auth } from '../firebase';
 import { signOut } from 'firebase/auth';
-import { LayoutDashboard, Users, FileBarChart, LogOut, ShieldCheck, HardHat, UserRound, X, LayoutGrid, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Users, FileBarChart, LogOut, ShieldCheck, HardHat, UserRound, X, LayoutGrid, Sun, Moon, Key } from 'lucide-react';
 import { ViewType, ThemeType } from '../App';
 
 interface SidebarProps {
@@ -13,9 +13,10 @@ interface SidebarProps {
   toggleTheme: () => void;
   setView: (view: ViewType) => void;
   onClose?: () => void;
+  onChangePassword: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ profile, currentView, theme, toggleTheme, setView, onClose }) => {
+const Sidebar: React.FC<SidebarProps> = ({ profile, currentView, theme, toggleTheme, setView, onClose, onChangePassword }) => {
   const isExecutor = profile.role === 'executor';
 
   const getRoleIcon = () => {
@@ -113,6 +114,14 @@ const Sidebar: React.FC<SidebarProps> = ({ profile, currentView, theme, toggleTh
           ) : (
             <><Sun size={20} className="text-amber-500" /> Tema Claro</>
           )}
+        </button>
+
+        <button 
+          onClick={onChangePassword}
+          className="w-full flex items-center gap-3 px-5 py-4 bg-gray-50 dark:bg-zinc-800 text-black dark:text-white rounded-2xl transition-all font-black uppercase tracking-widest text-xs border border-gray-200 dark:border-zinc-700 hover:border-blue-500/50"
+        >
+          <Key size={20} className="text-blue-600 dark:text-blue-400" />
+          Alterar Senha
         </button>
 
         <button 
