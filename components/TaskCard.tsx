@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Task, UserProfile, TaskStatus } from '../types';
-import { Info, Trash2, Briefcase, Eye, Calendar, Clock } from 'lucide-react';
+import { Info, Trash2, Briefcase, Eye, Calendar, Clock, AlertTriangle } from 'lucide-react';
 import { doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -24,6 +24,26 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
     }
   };
 
+  // Lógica para verificar se a data está vencendo ou vencida
+  const getDateStatus = () => {
+    if (!task.maxDate || task.status === 'Executada') return null;
+    
+    const parts = task.maxDate.split('/');
+    if (parts.length !== 3) return null;
+    
+    const maxDateObj = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    maxDateObj.setHours(0, 0, 0, 0);
+
+    if (maxDateObj < today) return 'vencida';
+    if (maxDateObj.getTime() === today.getTime()) return 'hoje';
+    
+    return null;
+  };
+
+  const dateStatus = getDateStatus();
+
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (window.confirm(`Excluir OM ${task.omNumber}?`)) {
@@ -35,7 +55,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
 
   if (variant === 'list') {
     return (
-      <tr className="hover:bg-blue-50/30 dark:hover:bg-zinc-800 transition-colors group">
+      <tr className={`hover:bg-blue-50/30 dark:hover:bg-zinc-800 transition-colors group ${dateStatus ? 'bg-rose-50/20 dark:bg-rose-900/5' : ''}`}>
         <td className="px-6 py-4">
           <div className="font-mono font-black text-black dark:text-white text-sm">{task.omNumber}</div>
         </td>
@@ -46,9 +66,9 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
           <div className="text-black dark:text-zinc-400 font-bold text-[10px] uppercase">{task.workCenter}</div>
         </td>
         <td className="px-6 py-4 text-center">
-          <div className="text-[10px] font-black text-black dark:text-zinc-500 opacity-60">
-            {/* Correção do caractere > que causava erro no Vercel */}
+          <div className={`text-[10px] font-black flex items-center justify-center gap-1 ${dateStatus ? 'text-rose-600 dark:text-rose-400' : 'text-black dark:text-zinc-500 opacity-60'}`}>
             {task.minDate || '-'} &rarr; {task.maxDate || '-'}
+            {dateStatus && <AlertTriangle size={12} className="animate-pulse" />}
           </div>
         </td>
         <td className="px-6 py-4 text-center">
@@ -75,9 +95,19 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
   return (
     <div 
       onClick={onOpenDetails}
-      className="bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-2xl p-4 shadow-sm active:scale-[0.98] transition-all relative overflow-hidden"
+      className={`bg-white dark:bg-zinc-900 border ${dateStatus ? 'border-rose-200 dark:border-rose-900/50 shadow-rose-100/50' : 'border-gray-100 dark:border-zinc-800'} rounded-2xl p-4 shadow-sm active:scale-[0.98] transition-all relative overflow-hidden`}
     >
-      <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${getStatusStyle(task.status)}`} />
+      <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${dateStatus ? 'bg-rose-600' : getStatusStyle(task.status)}`} />
+      
+      {dateStatus && (
+        <div className="absolute top-2 right-2 flex items-center gap-1 bg-rose-600 text-white px-2 py-0.5 rounded-full animate-pulse shadow-lg">
+          <AlertTriangle size={10} />
+          <span className="text-[8px] font-black uppercase tracking-widest">
+            {dateStatus === 'vencida' ? 'VENCIDA' : 'VENCE HOJE'}
+          </span>
+        </div>
+      )}
+
       <div className="space-y-3">
         <div className="flex justify-between items-start gap-4">
           <div className="space-y-0.5">
@@ -87,11 +117,11 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
                 {task.status}
               </span>
             </div>
-            <h3 className="font-black text-black dark:text-white leading-tight text-sm uppercase tracking-tight line-clamp-2">
+            <h3 className={`font-black leading-tight text-sm uppercase tracking-tight line-clamp-2 ${dateStatus ? 'text-rose-600 dark:text-rose-400' : 'text-black dark:text-white'}`}>
               {task.description}
             </h3>
           </div>
-          {profile.role === 'gerente' && (
+          {profile.role === 'gerente' && !dateStatus && (
             <button onClick={handleDelete} className="p-2 text-rose-50 dark:text-rose-900/30 rounded-lg text-rose-600">
               <Trash2 size={16} />
             </button>
@@ -103,8 +133,10 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
             <span className="text-[10px] font-bold text-black dark:text-zinc-400 uppercase truncate">{task.workCenter}</span>
           </div>
           <div className="flex items-center gap-1.5 justify-end">
-            <Calendar size={12} className="text-gray-400 dark:text-zinc-500" />
-            <span className="text-[10px] font-bold text-black dark:text-zinc-400 uppercase">{task.maxDate || '-'}</span>
+            <Calendar size={12} className={dateStatus ? 'text-rose-500' : 'text-gray-400 dark:text-zinc-500'} />
+            <span className={`text-[10px] font-bold uppercase ${dateStatus ? 'text-rose-600 dark:text-rose-400 font-black' : 'text-black dark:text-zinc-400'}`}>
+              {task.maxDate || '-'}
+            </span>
           </div>
         </div>
         <div className="flex items-center justify-between pt-2">
@@ -112,7 +144,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
             <Clock size={10} />
             {new Date(task.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </div>
-          <button className="flex items-center gap-1 text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">
+          <button className={`flex items-center gap-1 text-[10px] font-black uppercase tracking-widest ${dateStatus ? 'text-rose-600' : 'text-blue-600 dark:text-blue-400'}`}>
             {isExecutor ? 'Ver' : 'Editar'} <Info size={12} />
           </button>
         </div>
