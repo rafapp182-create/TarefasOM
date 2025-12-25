@@ -30,9 +30,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
   const [filterStatus, setFilterStatus] = useState<TaskStatus | 'Todos'>('Todos');
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'group' | 'tasks'; title: string; message: string; onConfirm: () => void; } | null>(null);
 
-  // Estado para seleção múltipla
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
-
   const [showMapping, setShowMapping] = useState(false);
   const [excelHeaders, setExcelHeaders] = useState<string[]>([]);
   const [excelDataPending, setExcelDataPending] = useState<any[]>([]);
@@ -89,11 +87,13 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
   }, [activeGroupId]);
 
   const filteredTasks = useMemo(() => {
+    const term = searchTerm.toLowerCase().trim();
     const result = tasks.filter(t => {
-      const matchSearch = !searchTerm.trim() || 
-        t.omNumber.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.workCenter.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchSearch = !term || 
+        t.omNumber.toLowerCase().includes(term) || 
+        t.description.toLowerCase().includes(term) ||
+        t.workCenter.toLowerCase().includes(term) ||
+        (t.circuit && t.circuit.toLowerCase().includes(term));
       const matchStatus = filterStatus === 'Todos' || t.status === filterStatus;
       return matchSearch && matchStatus;
     });
@@ -106,7 +106,6 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     });
   }, [tasks, searchTerm, filterStatus]);
 
-  // Funções de Seleção
   const toggleTaskSelection = (id: string) => {
     const next = new Set(selectedTaskIds);
     if (next.has(id)) next.delete(id);
@@ -126,33 +125,32 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     const tasksToExport = tasks.filter(t => selectedTaskIds.has(t.id));
     if (tasksToExport.length === 0) return;
 
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const activeGroupName = grupos.find(g => g.id === activeGroupId)?.name || 'Geral';
 
-    doc.setFontSize(18);
-    doc.text(`Relatório de Tarefas Selecionadas - ${activeGroupName}`, 14, 20);
+    doc.setFontSize(16);
+    doc.text(`Lista de Tarefas - ${activeGroupName}`, 14, 20);
     doc.setFontSize(10);
-    doc.text(`Gerado em: ${new Date().toLocaleString()} | Itens: ${tasksToExport.length}`, 14, 28);
+    doc.text(`Gerado em: ${new Date().toLocaleString()} | Selecionados: ${tasksToExport.length}`, 14, 28);
 
     const tableRows = tasksToExport.map(t => [
-      t.omNumber,
-      t.description,
-      t.workCenter,
-      t.status,
-      t.minDate || '-',
-      t.maxDate || '-',
-      t.shift || '-',
-      t.reason || '-'
+      t.omNumber || '-',
+      t.description || '-',
+      t.circuit || '-'
     ]);
 
     autoTable(doc, {
       startY: 35,
-      head: [['OM', 'Descrição', 'CT', 'Status', 'Início', 'Fim', 'Turno', 'Motivo']],
+      head: [['Nº OM', 'Descrição', 'Circuito']],
       body: tableRows,
       theme: 'grid',
-      headStyles: { fillColor: [37, 99, 235], fontStyle: 'bold' },
-      styles: { fontSize: 8, cellPadding: 2 },
-      columnStyles: { 1: { cellWidth: 50 }, 7: { cellWidth: 35 } }
+      headStyles: { fillColor: [37, 99, 235], fontStyle: 'bold', textColor: [255, 255, 255] },
+      styles: { fontSize: 9, cellPadding: 3, overflow: 'linebreak' },
+      columnStyles: { 
+        0: { cellWidth: 30 }, 
+        1: { cellWidth: 'auto' }, 
+        2: { cellWidth: 45 } 
+      }
     });
 
     doc.save(`OmPro_Selecao_${activeGroupName}_${new Date().getTime()}.pdf`);
@@ -206,6 +204,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
           omNumber: mapping.omNumber ? formatExcelValue(row[mapping.omNumber]) : 'S/N',
           description: mapping.description ? formatExcelValue(row[mapping.description]) : 'Sem descrição',
           workCenter: mapping.workCenter ? formatExcelValue(row[mapping.workCenter]) : 'N/A',
+          circuit: mapping.circuit ? formatExcelValue(row[mapping.circuit]) : '',
           minDate: mapping.minDate ? formatExcelValue(row[mapping.minDate]) : '',
           maxDate: mapping.maxDate ? formatExcelValue(row[mapping.maxDate]) : '',
           status: 'Pendente',
@@ -275,7 +274,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                   <input 
                     type="text" 
-                    placeholder="Buscar OM, Descrição ou CT..." 
+                    placeholder="Buscar OM, Descrição, CT ou Circuito..." 
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black dark:text-white transition-all"
@@ -388,14 +387,13 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
         </div>
       )}
 
-      {/* Barra de Ações Flutuante */}
       {selectedTaskIds.size > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[150] w-[calc(100%-2rem)] max-w-lg bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border border-blue-100 dark:border-zinc-700 p-4 rounded-3xl shadow-2xl flex items-center justify-between gap-4 animate-in slide-in-from-bottom-8 duration-300">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center font-black">{selectedTaskIds.size}</div>
             <div className="hidden sm:block">
               <p className="text-xs font-black text-black dark:text-white uppercase leading-none">Itens Selecionados</p>
-              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Pronto para exportar</p>
+              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Exportar OM, Desc. e Circuito</p>
             </div>
           </div>
           <div className="flex items-center gap-2">

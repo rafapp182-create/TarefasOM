@@ -13,6 +13,7 @@ const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ headers, onConf
     omNumber: '',
     description: '',
     workCenter: '',
+    circuit: '',
     minDate: '',
     maxDate: ''
   });
@@ -27,6 +28,7 @@ const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ headers, onConf
       if (['om', 'ordem', 'tag'].includes(nh)) autoMap.omNumber = h;
       if (['descricao', 'atividade', 'texto'].includes(nh)) autoMap.description = h;
       if (['ct', 'centro', 'setor', 'centrab'].includes(nh)) autoMap.workCenter = h;
+      if (['circuito', 'circuit', 'loc', 'tagloc'].includes(nh)) autoMap.circuit = h;
       if (['inicio', 'minima', 'datamin'].includes(nh)) autoMap.minDate = h;
       if (['fim', 'maxima', 'datamax'].includes(nh)) autoMap.maxDate = h;
     });
@@ -39,6 +41,7 @@ const ImportMappingModal: React.FC<ImportMappingModalProps> = ({ headers, onConf
     { id: 'omNumber', label: 'Nº da OM (Identificador)', required: true },
     { id: 'description', label: 'Descrição da Atividade', required: true },
     { id: 'workCenter', label: 'Centro de Trabalho (Setor)', required: true },
+    { id: 'circuit', label: 'Circuito (Localização)', required: false },
     { id: 'minDate', label: 'Data de Início (Opcional)', required: false },
     { id: 'maxDate', label: 'Data de Término (Opcional)', required: false },
   ];

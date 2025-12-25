@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Task, UserProfile, TaskStatus } from '../types';
-import { Info, Trash2, Briefcase, Eye, Calendar, Clock, AlertTriangle, CheckSquare, Square } from 'lucide-react';
+import { Info, Trash2, Briefcase, Eye, Calendar, Clock, AlertTriangle, CheckSquare, Square, MapPin } from 'lucide-react';
 import { doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -68,6 +68,11 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
         </td>
         <td className="px-6 py-4">
           <div className="font-bold text-black dark:text-zinc-200 text-sm max-w-xs truncate">{task.description}</div>
+          {task.circuit && (
+            <div className="flex items-center gap-1 text-[9px] text-blue-600 dark:text-blue-400 font-black uppercase mt-0.5">
+              <MapPin size={10} /> {task.circuit}
+            </div>
+          )}
         </td>
         <td className="px-6 py-4">
           <div className="text-black dark:text-zinc-400 font-bold text-[10px] uppercase">{task.workCenter}</div>
@@ -124,6 +129,11 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
             <h3 className={`font-black leading-tight text-sm uppercase tracking-tight line-clamp-2 ${dateStatus ? 'text-rose-600 dark:text-rose-400' : 'text-black dark:text-white'}`}>
               {task.description}
             </h3>
+            {task.circuit && (
+              <div className="flex items-center gap-1 text-[8px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded w-fit mt-1">
+                <MapPin size={10} /> {task.circuit}
+              </div>
+            )}
           </div>
         </div>
 

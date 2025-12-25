@@ -32,6 +32,7 @@ export interface Task {
   omNumber: string;
   description: string;
   workCenter: string;
+  circuit?: string;
   minDate: string;
   maxDate: string;
   status: TaskStatus;

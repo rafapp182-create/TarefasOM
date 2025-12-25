@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Task, UserProfile, TaskStatus, Shift, HistoryEntry } from '../types';
-import { X, CheckCircle2, PlayCircle, XCircle, Clock, MessageSquare, Save, Info, Briefcase, History, User, Eye } from 'lucide-react';
+import { X, CheckCircle2, PlayCircle, XCircle, Clock, MessageSquare, Save, Info, Briefcase, History, User, Eye, MapPin } from 'lucide-react';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -59,6 +59,14 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, profile }) => {
               <span className="text-black dark:text-zinc-400 text-xs font-bold uppercase tracking-widest flex items-center gap-1">
                 <Briefcase size={12} /> {task.workCenter}
               </span>
+              {task.circuit && (
+                <>
+                  <span className="text-black dark:text-zinc-600">/</span>
+                  <span className="text-blue-600 dark:text-blue-400 text-xs font-black uppercase tracking-widest flex items-center gap-1">
+                    <MapPin size={12} /> {task.circuit}
+                  </span>
+                </>
+              )}
             </div>
             <h3 className="text-2xl font-black text-black dark:text-white leading-tight uppercase tracking-tighter">{task.description}</h3>
           </div>
@@ -78,7 +86,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, profile }) => {
           {activeTab === 'update' && !isExecutor && (
             <div className="space-y-8 animate-in fade-in">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <StatusBtn active={newStatus === 'Executada'} onClick={() => setNewStatus('Executada')} color="emerald" icon={<CheckCircle2 size={18} />} label="Executada" />
+                <StatusBtn active={newStatus === 'Executada'} onClick={() => setNewStatus('Executada'} color="emerald" icon={<CheckCircle2 size={18} />} label="Executada" />
                 <StatusBtn active={newStatus === 'Em andamento'} onClick={() => setNewStatus('Em andamento')} color="blue" icon={<PlayCircle size={18} />} label="Andamento" />
                 <StatusBtn active={newStatus === 'Não executada'} onClick={() => setNewStatus('Não executada')} color="rose" icon={<XCircle size={18} />} label="Não Executada" />
               </div>
@@ -101,6 +109,16 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, profile }) => {
 
           {activeTab === 'details' && (
             <div className="space-y-10 pb-10">
+              {task.circuit && (
+                <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-2xl border border-blue-100 dark:border-blue-800 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <MapPin className="text-blue-600" size={20} />
+                    <span className="text-xs font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">Circuito / Localização</span>
+                  </div>
+                  <span className="text-sm font-black text-black dark:text-white uppercase">{task.circuit}</span>
+                </div>
+              )}
+
               <div>
                 <h4 className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-4 flex items-center gap-2"><History size={14} /> Histórico</h4>
                 <div className="space-y-3">
