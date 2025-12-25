@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Task, UserProfile, TaskStatus } from '../types';
-import { Info, Trash2, Briefcase, Eye, Calendar, Clock, AlertTriangle } from 'lucide-react';
+import { Info, Trash2, Briefcase, Eye, Calendar, Clock, AlertTriangle, CheckSquare, Square } from 'lucide-react';
 import { doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -10,9 +10,11 @@ interface TaskCardProps {
   profile: UserProfile;
   onOpenDetails: () => void;
   variant?: 'list' | 'card';
+  isSelected?: boolean;
+  onToggleSelection?: () => void;
 }
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, variant = 'card' }) => {
+const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, variant = 'card', isSelected, onToggleSelection }) => {
   const isExecutor = profile.role === 'executor';
 
   const getStatusStyle = (status: TaskStatus) => {
@@ -24,25 +26,25 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
     }
   };
 
-  // Lógica para verificar se a data está vencendo ou vencida
   const getDateStatus = () => {
     if (!task.maxDate || task.status === 'Executada') return null;
-    
     const parts = task.maxDate.split('/');
     if (parts.length !== 3) return null;
-    
     const maxDateObj = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     maxDateObj.setHours(0, 0, 0, 0);
-
     if (maxDateObj < today) return 'vencida';
     if (maxDateObj.getTime() === today.getTime()) return 'hoje';
-    
     return null;
   };
 
   const dateStatus = getDateStatus();
+
+  const handleToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleSelection?.();
+  };
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -55,8 +57,13 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
 
   if (variant === 'list') {
     return (
-      <tr className={`hover:bg-blue-50/30 dark:hover:bg-zinc-800 transition-colors group ${dateStatus ? 'bg-rose-50/20 dark:bg-rose-900/5' : ''}`}>
+      <tr className={`hover:bg-blue-50/30 dark:hover:bg-zinc-800 transition-colors group ${isSelected ? 'bg-blue-50 dark:bg-blue-900/10' : dateStatus ? 'bg-rose-50/20 dark:bg-rose-900/5' : ''}`}>
         <td className="px-6 py-4">
+          <button onClick={handleToggle} className={`${isSelected ? 'text-blue-600' : 'text-zinc-300 dark:text-zinc-600'}`}>
+            {isSelected ? <CheckSquare size={20} /> : <Square size={20} />}
+          </button>
+        </td>
+        <td className="px-4 py-4">
           <div className="font-mono font-black text-black dark:text-white text-sm">{task.omNumber}</div>
         </td>
         <td className="px-6 py-4">
@@ -95,21 +102,18 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
   return (
     <div 
       onClick={onOpenDetails}
-      className={`bg-white dark:bg-zinc-900 border ${dateStatus ? 'border-rose-200 dark:border-rose-900/50 shadow-rose-100/50' : 'border-gray-100 dark:border-zinc-800'} rounded-2xl p-4 shadow-sm active:scale-[0.98] transition-all relative overflow-hidden`}
+      className={`bg-white dark:bg-zinc-900 border ${isSelected ? 'border-blue-500 ring-2 ring-blue-500/20' : dateStatus ? 'border-rose-200 dark:border-rose-900/50 shadow-rose-100/50' : 'border-gray-100 dark:border-zinc-800'} rounded-2xl p-4 shadow-sm active:scale-[0.98] transition-all relative overflow-hidden`}
     >
-      <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${dateStatus ? 'bg-rose-600' : getStatusStyle(task.status)}`} />
+      <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${isSelected ? 'bg-blue-600' : dateStatus ? 'bg-rose-600' : getStatusStyle(task.status)}`} />
       
-      {dateStatus && (
-        <div className="absolute top-2 right-2 flex items-center gap-1 bg-rose-600 text-white px-2 py-0.5 rounded-full animate-pulse shadow-lg">
-          <AlertTriangle size={10} />
-          <span className="text-[8px] font-black uppercase tracking-widest">
-            {dateStatus === 'vencida' ? 'VENCIDA' : 'VENCE HOJE'}
-          </span>
-        </div>
-      )}
+      <div className="absolute top-3 right-3 flex items-center gap-2">
+        <button onClick={handleToggle} className={`${isSelected ? 'text-blue-600' : 'text-zinc-200 dark:text-zinc-800'}`}>
+          {isSelected ? <CheckSquare size={22} /> : <Square size={22} />}
+        </button>
+      </div>
 
       <div className="space-y-3">
-        <div className="flex justify-between items-start gap-4">
+        <div className="flex justify-between items-start pr-8">
           <div className="space-y-0.5">
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">OM {task.omNumber}</span>
@@ -121,12 +125,17 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
               {task.description}
             </h3>
           </div>
-          {profile.role === 'gerente' && !dateStatus && (
-            <button onClick={handleDelete} className="p-2 text-rose-50 dark:text-rose-900/30 rounded-lg text-rose-600">
-              <Trash2 size={16} />
-            </button>
-          )}
         </div>
+
+        {dateStatus && (
+          <div className="inline-flex items-center gap-1 bg-rose-600 text-white px-2 py-0.5 rounded-full animate-pulse shadow-sm">
+            <AlertTriangle size={10} />
+            <span className="text-[8px] font-black uppercase tracking-widest">
+              {dateStatus === 'vencida' ? 'VENCIDA' : 'VENCE HOJE'}
+            </span>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-50 dark:border-zinc-800">
           <div className="flex items-center gap-1.5">
             <Briefcase size={12} className="text-gray-400 dark:text-zinc-500" />
@@ -138,15 +147,6 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
               {task.maxDate || '-'}
             </span>
           </div>
-        </div>
-        <div className="flex items-center justify-between pt-2">
-          <div className="flex items-center gap-1 text-[9px] font-bold text-gray-400 dark:text-zinc-600 uppercase italic">
-            <Clock size={10} />
-            {new Date(task.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </div>
-          <button className={`flex items-center gap-1 text-[10px] font-black uppercase tracking-widest ${dateStatus ? 'text-rose-600' : 'text-blue-600 dark:text-blue-400'}`}>
-            {isExecutor ? 'Ver' : 'Editar'} <Info size={12} />
-          </button>
         </div>
       </div>
     </div>

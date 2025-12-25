@@ -4,8 +4,10 @@ import { collection, query, where, onSnapshot, doc, addDoc, writeBatch, getDocs 
 import { db } from '../firebase';
 import { UserProfile, Grupo, Task, TaskStatus } from '../types';
 import TaskCard from './TaskCard';
-import { Trash2, Upload, Loader2, FileSpreadsheet, Settings2, FolderPlus, Search, Filter, Eraser, AlertOctagon, XCircle } from 'lucide-react';
+import { Trash2, Upload, Loader2, FileSpreadsheet, Settings2, FolderPlus, Search, Filter, Eraser, AlertOctagon, XCircle, FileText, CheckSquare, Square } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import TaskModal from './TaskModal';
 import ImportMappingModal from './ImportMappingModal';
 
@@ -28,6 +30,9 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
   const [filterStatus, setFilterStatus] = useState<TaskStatus | 'Todos'>('Todos');
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'group' | 'tasks'; title: string; message: string; onConfirm: () => void; } | null>(null);
 
+  // Estado para seleção múltipla
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+
   const [showMapping, setShowMapping] = useState(false);
   const [excelHeaders, setExcelHeaders] = useState<string[]>([]);
   const [excelDataPending, setExcelDataPending] = useState<any[]>([]);
@@ -40,11 +45,8 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     }
   }, [grupos, activeGroupId]);
 
-  /**
-   * Converte string DD/MM/AAAA em timestamp para ordenação
-   */
   const getDateTimestamp = (dateStr: string): number => {
-    if (!dateStr || typeof dateStr !== 'string') return Infinity; // Sem data vai para o fim
+    if (!dateStr || typeof dateStr !== 'string') return Infinity;
     const parts = dateStr.split('/');
     if (parts.length !== 3) return Infinity;
     const day = parseInt(parts[0], 10);
@@ -65,20 +67,9 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     }
     if (typeof val === 'number' && val > 40000 && val < 60000) {
       const date = XLSX.SSF.parse_date_code(val);
-      const day = String(date.d).padStart(2, '0');
-      const month = String(date.m).padStart(2, '0');
-      const year = date.y;
-      return `${day}/${month}/${year}`;
+      return `${String(date.d).padStart(2, '0')}/${String(date.m).padStart(2, '0')}/${date.y}`;
     }
-    const str = String(val).trim();
-    if (str.includes('-') && !isNaN(Date.parse(str))) {
-      const d = new Date(str);
-      const day = String(d.getDate()).padStart(2, '0');
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const year = d.getFullYear();
-      return `${day}/${month}/${year}`;
-    }
-    return str;
+    return String(val).trim();
   };
 
   useEffect(() => {
@@ -103,24 +94,70 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
         t.omNumber.toLowerCase().includes(searchTerm.toLowerCase()) || 
         t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
         t.workCenter.toLowerCase().includes(searchTerm.toLowerCase());
-      
       const matchStatus = filterStatus === 'Todos' || t.status === filterStatus;
-
       return matchSearch && matchStatus;
     });
 
-    // Ordenação por minDate crescente
     return result.sort((a, b) => {
       const timeA = getDateTimestamp(a.minDate);
       const timeB = getDateTimestamp(b.minDate);
-      
-      if (timeA === timeB) {
-        // Se as datas forem iguais, ordena por OM ou última atualização
-        return b.updatedAt - a.updatedAt;
-      }
+      if (timeA === timeB) return b.updatedAt - a.updatedAt;
       return timeA - timeB;
     });
   }, [tasks, searchTerm, filterStatus]);
+
+  // Funções de Seleção
+  const toggleTaskSelection = (id: string) => {
+    const next = new Set(selectedTaskIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedTaskIds(next);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedTaskIds.size === filteredTasks.length) {
+      setSelectedTaskIds(new Set());
+    } else {
+      setSelectedTaskIds(new Set(filteredTasks.map(t => t.id)));
+    }
+  };
+
+  const exportSelectedToPDF = () => {
+    const tasksToExport = tasks.filter(t => selectedTaskIds.has(t.id));
+    if (tasksToExport.length === 0) return;
+
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const activeGroupName = grupos.find(g => g.id === activeGroupId)?.name || 'Geral';
+
+    doc.setFontSize(18);
+    doc.text(`Relatório de Tarefas Selecionadas - ${activeGroupName}`, 14, 20);
+    doc.setFontSize(10);
+    doc.text(`Gerado em: ${new Date().toLocaleString()} | Itens: ${tasksToExport.length}`, 14, 28);
+
+    const tableRows = tasksToExport.map(t => [
+      t.omNumber,
+      t.description,
+      t.workCenter,
+      t.status,
+      t.minDate || '-',
+      t.maxDate || '-',
+      t.shift || '-',
+      t.reason || '-'
+    ]);
+
+    autoTable(doc, {
+      startY: 35,
+      head: [['OM', 'Descrição', 'CT', 'Status', 'Início', 'Fim', 'Turno', 'Motivo']],
+      body: tableRows,
+      theme: 'grid',
+      headStyles: { fillColor: [37, 99, 235], fontStyle: 'bold' },
+      styles: { fontSize: 8, cellPadding: 2 },
+      columnStyles: { 1: { cellWidth: 50 }, 7: { cellWidth: 35 } }
+    });
+
+    doc.save(`OmPro_Selecao_${activeGroupName}_${new Date().getTime()}.pdf`);
+    setSelectedTaskIds(new Set());
+  };
 
   const handleAddGroup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,19 +179,11 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     reader.onload = async (evt) => {
       try {
         const dataBuffer = evt.target?.result;
-        const workbook = XLSX.read(dataBuffer, { type: 'array', cellDates: true, cellNF: true, cellText: false });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
+        const workbook = XLSX.read(dataBuffer, { type: 'array', cellDates: true });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' }) as any[][];
         const headerIndex = rows.findIndex(row => row.filter(cell => String(cell).trim() !== '').length >= 2);
-        if (headerIndex === -1) throw new Error("Planilha vazia.");
-        const rawHeaders = rows[headerIndex];
-        const headers: string[] = [];
-        rawHeaders.forEach(h => {
-          let name = String(h || '').trim();
-          if (name && !name.startsWith('__EMPTY')) headers.push(name);
-        });
-        if (headers.length === 0) throw new Error("Sem cabeçalhos.");
+        const headers = rows[headerIndex].filter(h => h && !String(h).startsWith('__EMPTY'));
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { range: headerIndex, defval: '', blankrows: false });
         setExcelHeaders(headers);
         setExcelDataPending(jsonData);
@@ -171,7 +200,6 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     try {
       const batch = writeBatch(db);
       excelDataPending.forEach((row: any) => {
-        if (!Object.values(row).some(v => v !== '')) return;
         const newTaskRef = doc(collection(db, 'tarefas'));
         batch.set(newTaskRef, {
           groupId: activeGroupId,
@@ -189,14 +217,13 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
         });
       });
       await batch.commit();
-      setExcelDataPending([]);
     } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); }
   };
 
   const activeGroup = grupos.find(g => g.id === activeGroupId);
 
   return (
-    <div className="p-3 md:p-8 max-w-full mx-auto space-y-4 md:space-y-6">
+    <div className="p-3 md:p-8 max-w-full mx-auto space-y-4 md:space-y-6 pb-24">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl md:text-2xl font-black text-black dark:text-white flex items-center gap-2 uppercase tracking-tighter">
@@ -277,11 +304,16 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
                       <Upload size={16} /> Importar Colunas
                       <input type="file" accept=".xlsx, .xls" onChange={handleExcelFileSelect} className="hidden" />
                     </label>
-                    <button onClick={() => setConfirmDelete({ type: 'tasks', title: 'Limpar Lista', message: 'Apagar tudo deste grupo?', onConfirm: executeClearTasks })} className="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-xl hover:bg-rose-100 transition-colors">
+                    <button onClick={() => setConfirmDelete({ type: 'tasks', title: 'Limpar Lista', message: 'Apagar tudo deste grupo?', onConfirm: async () => {
+                      setConfirmDelete(null); setIsProcessing(true); setProcessingText('Limpando...');
+                      const q = query(collection(db, 'tarefas'), where('groupId', '==', activeGroupId));
+                      const snapshot = await getDocs(q);
+                      const batch = writeBatch(db);
+                      snapshot.docs.forEach(d => batch.delete(d.ref));
+                      await batch.commit();
+                      setIsProcessing(false);
+                    }})} className="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-xl hover:bg-rose-100 transition-colors">
                       <Eraser size={18} />
-                    </button>
-                    <button onClick={() => setConfirmDelete({ type: 'group', title: 'Excluir Aba', message: `Apagar a aba "${activeGroup.name}" e todas as suas tarefas?`, onConfirm: () => executeDeleteGroup(activeGroup.id) })} className="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-xl hover:bg-rose-100 transition-colors">
-                      <Trash2 size={18} />
                     </button>
                   </>
                 )}
@@ -300,7 +332,12 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
                 <table className="w-full text-left">
                   <thead className="bg-gray-50 dark:bg-zinc-800/50 border-b border-gray-100 dark:border-zinc-800">
                     <tr>
-                      <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest">Nº OM</th>
+                      <th className="px-6 py-4 w-10">
+                        <button onClick={toggleSelectAll} className="text-blue-600">
+                          {selectedTaskIds.size === filteredTasks.length ? <CheckSquare size={20} /> : <Square size={20} />}
+                        </button>
+                      </th>
+                      <th className="px-4 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest">Nº OM</th>
                       <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest">Descrição</th>
                       <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest">CT</th>
                       <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest text-center">Início (Cresc.)</th>
@@ -310,14 +347,30 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
                   </thead>
                   <tbody className="divide-y divide-gray-50 dark:divide-zinc-800">
                     {filteredTasks.map(task => (
-                      <TaskCard key={task.id} task={task} onOpenDetails={() => setSelectedTask(task)} profile={profile} variant="list" />
+                      <TaskCard 
+                        key={task.id} 
+                        task={task} 
+                        onOpenDetails={() => setSelectedTask(task)} 
+                        profile={profile} 
+                        variant="list" 
+                        isSelected={selectedTaskIds.has(task.id)}
+                        onToggleSelection={() => toggleTaskSelection(task.id)}
+                      />
                     ))}
                   </tbody>
                 </table>
               </div>
               <div className="md:hidden grid grid-cols-1 gap-3">
                 {filteredTasks.map(task => (
-                  <TaskCard key={task.id} task={task} onOpenDetails={() => setSelectedTask(task)} profile={profile} variant="card" />
+                  <TaskCard 
+                    key={task.id} 
+                    task={task} 
+                    onOpenDetails={() => setSelectedTask(task)} 
+                    profile={profile} 
+                    variant="card" 
+                    isSelected={selectedTaskIds.has(task.id)}
+                    onToggleSelection={() => toggleTaskSelection(task.id)}
+                  />
                 ))}
               </div>
             </div>
@@ -325,14 +378,6 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
             <div className="py-20 text-center bg-white dark:bg-zinc-900 rounded-3xl border-2 border-dashed border-gray-200 dark:border-zinc-800">
               <FileSpreadsheet className="mx-auto text-blue-300 dark:text-zinc-700 w-12 h-12 mb-4" />
               <p className="text-sm font-black text-black dark:text-white uppercase">Nenhuma tarefa corresponde aos filtros</p>
-              {(searchTerm || filterStatus !== 'Todos') && (
-                <button 
-                  onClick={() => { setSearchTerm(''); setFilterStatus('Todos'); }}
-                  className="mt-4 text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline"
-                >
-                  Limpar todos os filtros
-                </button>
-              )}
             </div>
           )}
         </div>
@@ -340,6 +385,33 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
         <div className="text-center py-20 bg-gray-50 dark:bg-zinc-900 rounded-3xl border-2 border-dashed border-gray-200 dark:border-zinc-800">
           <Settings2 className="mx-auto w-12 h-12 text-gray-300 dark:text-zinc-700 mb-4" />
           <h3 className="text-sm font-black text-black dark:text-zinc-400 uppercase tracking-widest">Selecione uma aba para começar</h3>
+        </div>
+      )}
+
+      {/* Barra de Ações Flutuante */}
+      {selectedTaskIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[150] w-[calc(100%-2rem)] max-w-lg bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border border-blue-100 dark:border-zinc-700 p-4 rounded-3xl shadow-2xl flex items-center justify-between gap-4 animate-in slide-in-from-bottom-8 duration-300">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center font-black">{selectedTaskIds.size}</div>
+            <div className="hidden sm:block">
+              <p className="text-xs font-black text-black dark:text-white uppercase leading-none">Itens Selecionados</p>
+              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Pronto para exportar</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setSelectedTaskIds(new Set())}
+              className="px-4 py-2.5 text-rose-600 font-black uppercase text-[10px] tracking-widest hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-colors"
+            >
+              Cancelar
+            </button>
+            <button 
+              onClick={exportSelectedToPDF}
+              className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-blue-200 dark:shadow-none hover:bg-blue-700 transition-all active:scale-95"
+            >
+              <FileText size={16} /> Gerar PDF
+            </button>
+          </div>
         </div>
       )}
 
@@ -368,31 +440,6 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
       )}
     </div>
   );
-
-  async function executeClearTasks() {
-    if (!activeGroupId) return;
-    setConfirmDelete(null); setIsProcessing(true); setProcessingText('Limpando Lista...');
-    try {
-      const q = query(collection(db, 'tarefas'), where('groupId', '==', activeGroupId));
-      const snapshot = await getDocs(q);
-      const batch = writeBatch(db);
-      snapshot.docs.forEach(d => batch.delete(d.ref));
-      await batch.commit();
-    } catch (e) { console.error(e); } finally { setIsProcessing(false); }
-  }
-
-  async function executeDeleteGroup(groupId: string) {
-    setConfirmDelete(null); setIsProcessing(true); setProcessingText('Excluindo Aba...');
-    try {
-      const q = query(collection(db, 'tarefas'), where('groupId', '==', groupId));
-      const snapshot = await getDocs(q);
-      const batch = writeBatch(db);
-      snapshot.docs.forEach(d => batch.delete(d.ref));
-      batch.delete(doc(db, 'grupos', groupId));
-      await batch.commit();
-      setActiveGroupId(null);
-    } catch (e) { console.error(e); } finally { setIsProcessing(false); }
-  }
 };
 
 export default Dashboard;
