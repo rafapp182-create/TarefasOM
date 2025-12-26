@@ -86,7 +86,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, onClose, profile }) => {
           {activeTab === 'update' && !isExecutor && (
             <div className="space-y-8 animate-in fade-in">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <StatusBtn active={newStatus === 'Executada'} onClick={() => setNewStatus('Executada'} color="emerald" icon={<CheckCircle2 size={18} />} label="Executada" />
+                <StatusBtn active={newStatus === 'Executada'} onClick={() => setNewStatus('Executada')} color="emerald" icon={<CheckCircle2 size={18} />} label="Executada" />
                 <StatusBtn active={newStatus === 'Em andamento'} onClick={() => setNewStatus('Em andamento')} color="blue" icon={<PlayCircle size={18} />} label="Andamento" />
                 <StatusBtn active={newStatus === 'Não executada'} onClick={() => setNewStatus('Não executada')} color="rose" icon={<XCircle size={18} />} label="Não Executada" />
               </div>
@@ -160,7 +160,7 @@ const StatusBtn: React.FC<{ active: boolean; onClick: () => void; color: string;
     blue: active ? 'bg-blue-600 text-white border-blue-500' : 'bg-blue-50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-400 border-blue-100 dark:border-blue-900/50',
     rose: active ? 'bg-rose-600 text-white border-rose-500' : 'bg-rose-50 dark:bg-rose-900/10 text-rose-700 dark:text-rose-400 border-rose-100 dark:border-rose-900/50'
   };
-  return <button onClick={onClick} className={`flex flex-col items-center gap-2 p-6 rounded-3xl border-4 font-black uppercase text-xs transition-all ${themes[color]}`}>{icon}<span>{label}</span></button>;
+  return <button type="button" onClick={onClick} className={`flex flex-col items-center gap-2 p-6 rounded-3xl border-4 font-black uppercase text-xs transition-all ${themes[color]}`}>{icon}<span>{label}</span></button>;
 };
 
 export default TaskModal;

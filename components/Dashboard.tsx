@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, query, where, onSnapshot, doc, addDoc, writeBatch, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, addDoc, writeBatch, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { UserProfile, Grupo, Task, TaskStatus } from '../types';
 import TaskCard from './TaskCard';
@@ -64,8 +64,12 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
       return `${day}/${month}/${year}`;
     }
     if (typeof val === 'number' && val > 40000 && val < 60000) {
-      const date = XLSX.SSF.parse_date_code(val);
-      return `${String(date.d).padStart(2, '0')}/${String(date.m).padStart(2, '0')}/${date.y}`;
+      try {
+        const date = XLSX.SSF.parse_date_code(val);
+        return `${String(date.d).padStart(2, '0')}/${String(date.m).padStart(2, '0')}/${date.y}`;
+      } catch (e) {
+        return String(val);
+      }
     }
     return String(val).trim();
   };
@@ -81,6 +85,9 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const taskList = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Task));
       setTasks(taskList);
+      setLoading(false);
+    }, (error) => {
+      console.error("Erro no Listener:", error);
       setLoading(false);
     });
     return () => unsubscribe();
@@ -114,7 +121,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
   };
 
   const toggleSelectAll = () => {
-    if (selectedTaskIds.size === filteredTasks.length) {
+    if (selectedTaskIds.size === filteredTasks.length && filteredTasks.length > 0) {
       setSelectedTaskIds(new Set());
     } else {
       setSelectedTaskIds(new Set(filteredTasks.map(t => t.id)));
@@ -180,13 +187,17 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
         const workbook = XLSX.read(dataBuffer, { type: 'array', cellDates: true });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' }) as any[][];
-        const headerIndex = rows.findIndex(row => row.filter(cell => String(cell).trim() !== '').length >= 2);
-        const headers = rows[headerIndex].filter(h => h && !String(h).startsWith('__EMPTY'));
+        
+        let headerIndex = rows.findIndex(row => row.filter(cell => String(cell).trim() !== '').length >= 3);
+        if (headerIndex === -1) headerIndex = 0;
+        
+        const headers = rows[headerIndex].map(h => String(h).trim()).filter(h => h !== '');
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { range: headerIndex, defval: '', blankrows: false });
+        
         setExcelHeaders(headers);
         setExcelDataPending(jsonData);
         setShowMapping(true);
-      } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); e.target.value = ''; }
+      } catch (err: any) { alert("Erro ao ler Excel: " + err.message); } finally { setIsProcessing(false); e.target.value = ''; }
     };
     reader.readAsArrayBuffer(file);
   };
@@ -196,27 +207,98 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     setIsProcessing(true);
     setProcessingText('Sincronizando Banco...');
     try {
-      const batch = writeBatch(db);
-      excelDataPending.forEach((row: any) => {
-        const newTaskRef = doc(collection(db, 'tarefas'));
-        batch.set(newTaskRef, {
-          groupId: activeGroupId,
-          omNumber: mapping.omNumber ? formatExcelValue(row[mapping.omNumber]) : 'S/N',
-          description: mapping.description ? formatExcelValue(row[mapping.description]) : 'Sem descrição',
-          workCenter: mapping.workCenter ? formatExcelValue(row[mapping.workCenter]) : 'N/A',
-          circuit: mapping.circuit ? formatExcelValue(row[mapping.circuit]) : '',
-          minDate: mapping.minDate ? formatExcelValue(row[mapping.minDate]) : '',
-          maxDate: mapping.maxDate ? formatExcelValue(row[mapping.maxDate]) : '',
-          status: 'Pendente',
-          excelData: row,
-          updatedAt: Date.now(),
-          updatedBy: profile.uid,
-          updatedByEmail: profile.email,
-          history: []
+      const data = excelDataPending;
+      const CHUNK_SIZE = 400; 
+      
+      for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+        const chunk = data.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+        
+        chunk.forEach((row: any) => {
+          const newTaskRef = doc(collection(db, 'tarefas'));
+          batch.set(newTaskRef, {
+            groupId: activeGroupId,
+            omNumber: mapping.omNumber ? formatExcelValue(row[mapping.omNumber]) : 'S/N',
+            description: mapping.description ? formatExcelValue(row[mapping.description]) : 'Sem descrição',
+            workCenter: mapping.workCenter ? formatExcelValue(row[mapping.workCenter]) : 'N/A',
+            circuit: mapping.circuit ? formatExcelValue(row[mapping.circuit]) : '',
+            minDate: mapping.minDate ? formatExcelValue(row[mapping.minDate]) : '',
+            maxDate: mapping.maxDate ? formatExcelValue(row[mapping.maxDate]) : '',
+            status: 'Pendente',
+            excelData: row,
+            updatedAt: Date.now(),
+            updatedBy: profile.uid,
+            updatedByEmail: profile.email,
+            history: []
+          });
         });
-      });
-      await batch.commit();
-    } catch (err: any) { alert(err.message); } finally { setIsProcessing(false); }
+        
+        await batch.commit();
+        setProcessingText(`Importando... ${Math.min(i + CHUNK_SIZE, data.length)} de ${data.length}`);
+      }
+      alert("Importação concluída com sucesso!");
+    } catch (err: any) { 
+      console.error(err);
+      alert("Erro ao importar: " + err.message); 
+    } finally { setIsProcessing(false); }
+  };
+
+  const handleClearGroup = async () => {
+    setConfirmDelete(null);
+    setIsProcessing(true);
+    setProcessingText('Limpando base...');
+    try {
+      const q = query(collection(db, 'tarefas'), where('groupId', '==', activeGroupId));
+      const snapshot = await getDocs(q);
+      const docs = snapshot.docs;
+      
+      const CHUNK_SIZE = 400;
+      for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
+        const chunk = docs.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+        setProcessingText(`Excluindo... ${Math.min(i + CHUNK_SIZE, docs.length)} de ${docs.length}`);
+      }
+    } catch (err: any) { 
+      alert("Erro ao limpar lista: " + err.message); 
+    } finally { setIsProcessing(false); }
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!activeGroupId) return;
+    setConfirmDelete(null);
+    setIsProcessing(true);
+    setProcessingText('Excluindo aba e dados...');
+    try {
+      // 1. Deletar tarefas primeiro
+      const q = query(collection(db, 'tarefas'), where('groupId', '==', activeGroupId));
+      const snapshot = await getDocs(q);
+      const taskDocs = snapshot.docs;
+      
+      const CHUNK_SIZE = 400;
+      for (let i = 0; i < taskDocs.length; i += CHUNK_SIZE) {
+        const chunk = taskDocs.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+
+      // 2. Deletar o grupo
+      await deleteDoc(doc(db, 'grupos', activeGroupId));
+      
+      // 3. Redirecionar para outra aba se existir
+      const remaining = grupos.filter(g => g.id !== activeGroupId);
+      if (remaining.length > 0) {
+        setActiveGroupId(remaining[0].id);
+      } else {
+        setActiveGroupId(null);
+      }
+    } catch (err: any) {
+      alert("Erro ao excluir aba: " + err.message);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const activeGroup = grupos.find(g => g.id === activeGroupId);
@@ -231,11 +313,29 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
           </h2>
           <p className="text-xs md:text-sm text-black dark:text-zinc-400 font-medium italic">Gestão de tarefas em tempo real.</p>
         </div>
-        {profile.role === 'gerente' && (
-          <button onClick={() => setIsAddingGroup(true)} className="flex items-center justify-center gap-2 px-4 py-3 bg-black dark:bg-zinc-800 text-white rounded-xl font-bold transition-all text-sm w-full md:w-auto">
-            <FolderPlus size={18} /> Criar Nova Aba
-          </button>
-        )}
+        <div className="flex gap-2 w-full md:w-auto">
+          {profile.role !== 'executor' && (
+            <>
+              <button onClick={() => setIsAddingGroup(true)} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-black dark:bg-zinc-800 text-white rounded-xl font-bold transition-all text-sm">
+                <FolderPlus size={18} /> Criar Aba
+              </button>
+              {activeGroupId && (
+                <button 
+                  onClick={() => setConfirmDelete({ 
+                    type: 'group', 
+                    title: 'Excluir Aba Completa', 
+                    message: `ATENÇÃO: Isso apagará a aba "${activeGroup?.name}" e TODAS as tarefas vinculadas a ela permanentemente. Confirma?`, 
+                    onConfirm: handleDeleteGroup 
+                  })}
+                  className="flex items-center justify-center p-3 bg-rose-600 text-white rounded-xl hover:bg-rose-700 transition-colors shadow-lg shadow-rose-200 dark:shadow-none"
+                  title="Excluir Aba Atual"
+                >
+                  <Trash2 size={20} />
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       <div className="flex overflow-x-auto gap-1 border-b border-gray-200 dark:border-zinc-800 pb-1 no-scrollbar">
@@ -297,21 +397,18 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
               </div>
 
               <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-                {profile.role === 'gerente' && (
+                {profile.role !== 'executor' && (
                   <>
                     <label className="flex items-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl cursor-pointer font-black uppercase text-[10px] whitespace-nowrap hover:bg-emerald-700 transition-colors shadow-lg">
                       <Upload size={16} /> Importar Colunas
-                      <input type="file" accept=".xlsx, .xls" onChange={handleExcelFileSelect} className="hidden" />
+                      <input type="file" onClick={(e) => (e.currentTarget.value = '')} accept=".xlsx, .xls" onChange={handleExcelFileSelect} className="hidden" />
                     </label>
-                    <button onClick={() => setConfirmDelete({ type: 'tasks', title: 'Limpar Lista', message: 'Apagar tudo deste grupo?', onConfirm: async () => {
-                      setConfirmDelete(null); setIsProcessing(true); setProcessingText('Limpando...');
-                      const q = query(collection(db, 'tarefas'), where('groupId', '==', activeGroupId));
-                      const snapshot = await getDocs(q);
-                      const batch = writeBatch(db);
-                      snapshot.docs.forEach(d => batch.delete(d.ref));
-                      await batch.commit();
-                      setIsProcessing(false);
-                    }})} className="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-xl hover:bg-rose-100 transition-colors">
+                    <button onClick={() => setConfirmDelete({ 
+                      type: 'tasks', 
+                      title: 'Limpar Lista', 
+                      message: `Deseja realmente apagar todas as ${tasks.length} tarefas deste grupo? Esta ação não pode ser desfeita.`, 
+                      onConfirm: handleClearGroup 
+                    })} className="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-xl hover:bg-rose-100 transition-colors">
                       <Eraser size={18} />
                     </button>
                   </>
@@ -333,7 +430,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
                     <tr>
                       <th className="px-6 py-4 w-10">
                         <button onClick={toggleSelectAll} className="text-blue-600">
-                          {selectedTaskIds.size === filteredTasks.length ? <CheckSquare size={20} /> : <Square size={20} />}
+                          {selectedTaskIds.size === filteredTasks.length && filteredTasks.length > 0 ? <CheckSquare size={20} /> : <Square size={20} />}
                         </button>
                       </th>
                       <th className="px-4 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest">Nº OM</th>
@@ -417,12 +514,17 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
       {showMapping && <ImportMappingModal headers={excelHeaders} onCancel={() => { setShowMapping(false); setExcelDataPending([]); }} onConfirm={processMappingAndImport} />}
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[250] flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-zinc-900 rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl">
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl animate-in zoom-in-95">
             <div className="w-16 h-16 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4"><AlertOctagon size={32} /></div>
             <h3 className="text-lg font-black text-black dark:text-white uppercase mb-2">{confirmDelete.title}</h3>
             <p className="text-sm text-black dark:text-zinc-400 mb-6 font-medium leading-tight">{confirmDelete.message}</p>
             <div className="flex flex-col gap-2">
-              <button onClick={confirmDelete.onConfirm} className="w-full py-4 bg-rose-600 text-white rounded-xl font-black uppercase text-xs">Confirmar</button>
+              <button 
+                onClick={confirmDelete.onConfirm} 
+                className={`w-full py-4 ${confirmDelete.type === 'group' ? 'bg-rose-700' : 'bg-rose-600'} text-white rounded-xl font-black uppercase text-xs`}
+              >
+                Confirmar Exclusão
+              </button>
               <button onClick={() => setConfirmDelete(null)} className="w-full py-3 bg-gray-100 dark:bg-zinc-800 text-black dark:text-white rounded-xl font-bold text-xs">Cancelar</button>
             </div>
           </div>
@@ -432,7 +534,8 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
         <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[300] flex items-center justify-center p-6 text-center">
           <div>
             <Loader2 className="w-16 h-16 text-blue-600 animate-spin mx-auto mb-4" />
-            <h3 className="text-xl font-black text-white uppercase">{processingText}</h3>
+            <h3 className="text-xl font-black text-white uppercase tracking-tighter">{processingText}</h3>
+            <p className="text-xs text-zinc-500 font-bold mt-2 animate-pulse uppercase">Por favor, não feche esta janela...</p>
           </div>
         </div>
       )}

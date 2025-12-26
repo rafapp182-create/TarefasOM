@@ -16,6 +16,7 @@ interface TaskCardProps {
 
 const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, variant = 'card', isSelected, onToggleSelection }) => {
   const isExecutor = profile.role === 'executor';
+  const canDelete = profile.role === 'gerente' || profile.role === 'administrador';
 
   const getStatusStyle = (status: TaskStatus) => {
     switch (status) {
@@ -48,10 +49,10 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm(`Excluir OM ${task.omNumber}?`)) {
+    if (window.confirm(`Excluir permanentemente a OM ${task.omNumber}?`)) {
       try {
         await deleteDoc(doc(db, 'tarefas', task.id));
-      } catch (err) { alert("Erro ao excluir."); }
+      } catch (err) { alert("Erro ao excluir. Tente novamente."); }
     }
   };
 
@@ -93,8 +94,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
             <button onClick={onOpenDetails} className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-zinc-800 rounded-lg">
               {isExecutor ? <Eye size={18} /> : <Info size={18} />}
             </button>
-            {profile.role === 'gerente' && (
-              <button onClick={handleDelete} className="p-2 text-gray-300 dark:text-zinc-600 hover:text-rose-600 rounded-lg">
+            {canDelete && (
+              <button onClick={handleDelete} className="p-2 text-gray-300 dark:text-zinc-600 hover:text-rose-600 rounded-lg transition-colors">
                 <Trash2 size={18} />
               </button>
             )}
@@ -112,13 +113,18 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, profile, onOpenDetails, varia
       <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${isSelected ? 'bg-blue-600' : dateStatus ? 'bg-rose-600' : getStatusStyle(task.status)}`} />
       
       <div className="absolute top-3 right-3 flex items-center gap-2">
+        {canDelete && (
+          <button onClick={handleDelete} className="p-2 text-zinc-200 dark:text-zinc-800 hover:text-rose-600 rounded-lg transition-colors">
+            <Trash2 size={18} />
+          </button>
+        )}
         <button onClick={handleToggle} className={`${isSelected ? 'text-blue-600' : 'text-zinc-200 dark:text-zinc-800'}`}>
           {isSelected ? <CheckSquare size={22} /> : <Square size={22} />}
         </button>
       </div>
 
       <div className="space-y-3">
-        <div className="flex justify-between items-start pr-8">
+        <div className="flex justify-between items-start pr-12">
           <div className="space-y-0.5">
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">OM {task.omNumber}</span>
