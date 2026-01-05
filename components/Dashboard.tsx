@@ -4,7 +4,7 @@ import { collection, query, where, onSnapshot, doc, addDoc, writeBatch, getDocs,
 import { db } from '../firebase';
 import { UserProfile, Grupo, Task, TaskStatus } from '../types';
 import TaskCard from './TaskCard';
-import { Trash2, Upload, Loader2, FileSpreadsheet, Settings2, FolderPlus, Search, Filter, Eraser, AlertOctagon, XCircle, FileText, CheckSquare, Square } from 'lucide-react';
+import { Trash2, Upload, Loader2, FileSpreadsheet, Settings2, FolderPlus, Search, Filter, Eraser, AlertOctagon, XCircle, FileText, CheckSquare, Square, Calendar } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -28,6 +28,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
   const [processingText, setProcessingText] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<TaskStatus | 'Todos'>('Todos');
+  const [filterDate, setFilterDate] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'group' | 'tasks'; title: string; message: string; onConfirm: () => void; } | null>(null);
 
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
@@ -93,8 +94,22 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     return () => unsubscribe();
   }, [activeGroupId]);
 
+  // Extração de datas únicas para o filtro (estilo Excel)
+  const uniqueStartDates = useMemo(() => {
+    const dates = new Set<string>();
+    tasks.forEach(t => {
+      if (t.minDate && t.minDate.trim() !== '') {
+        dates.add(t.minDate.trim());
+      }
+    });
+    return Array.from(dates).sort((a, b) => {
+      return getDateTimestamp(a) - getDateTimestamp(b);
+    });
+  }, [tasks]);
+
   const filteredTasks = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
+    
     const result = tasks.filter(t => {
       const matchSearch = !term || 
         t.omNumber.toLowerCase().includes(term) || 
@@ -102,7 +117,8 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
         t.workCenter.toLowerCase().includes(term) ||
         (t.circuit && t.circuit.toLowerCase().includes(term));
       const matchStatus = filterStatus === 'Todos' || t.status === filterStatus;
-      return matchSearch && matchStatus;
+      const matchDate = !filterDate || t.minDate === filterDate;
+      return matchSearch && matchStatus && matchDate;
     });
 
     return result.sort((a, b) => {
@@ -111,7 +127,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
       if (timeA === timeB) return b.updatedAt - a.updatedAt;
       return timeA - timeB;
     });
-  }, [tasks, searchTerm, filterStatus]);
+  }, [tasks, searchTerm, filterStatus, filterDate]);
 
   const toggleTaskSelection = (id: string) => {
     const next = new Set(selectedTaskIds);
@@ -379,6 +395,19 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black dark:text-white transition-all"
                   />
+                </div>
+                <div className="relative flex-1">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <select 
+                    value={filterDate}
+                    onChange={(e) => setFilterDate(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black dark:text-white appearance-none cursor-pointer"
+                  >
+                    <option value="">Todas as Datas</option>
+                    {uniqueStartDates.map(date => (
+                      <option key={date} value={date}>{date}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="relative min-w-[160px]">
                   <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />

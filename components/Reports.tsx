@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Task, Grupo } from '../types';
-import { FileDown, Search, Loader2, Table, FileText } from 'lucide-react';
+import { FileDown, Search, Loader2, Table, FileText, Calendar } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -16,6 +16,7 @@ const Reports: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterShift, setFilterShift] = useState('');
   const [filterSearch, setFilterSearch] = useState('');
+  const [filterDate, setFilterDate] = useState('');
 
   useEffect(() => {
     const q = query(collection(db, 'tarefas'));
@@ -26,6 +27,30 @@ const Reports: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
     return () => unsubscribe();
   }, []);
 
+  const getDateTimestamp = (dateStr: string): number => {
+    if (!dateStr || typeof dateStr !== 'string') return Infinity;
+    const parts = dateStr.split('/');
+    if (parts.length !== 3) return Infinity;
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const year = parseInt(parts[2], 10);
+    const d = new Date(year, month, day);
+    return isNaN(d.getTime()) ? Infinity : d.getTime();
+  };
+
+  // Extração de datas únicas para o filtro (estilo Excel)
+  const uniqueStartDates = useMemo(() => {
+    const dates = new Set<string>();
+    tasks.forEach(t => {
+      if (t.minDate && t.minDate.trim() !== '') {
+        dates.add(t.minDate.trim());
+      }
+    });
+    return Array.from(dates).sort((a, b) => {
+      return getDateTimestamp(a) - getDateTimestamp(b);
+    });
+  }, [tasks]);
+
   const filteredTasks = tasks.filter(t => {
     const matchGroup = !filterGroup || t.groupId === filterGroup;
     const matchStatus = !filterStatus || t.status === filterStatus;
@@ -34,7 +59,9 @@ const Reports: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
       t.description.toLowerCase().includes(filterSearch.toLowerCase()) || 
       t.omNumber.toLowerCase().includes(filterSearch.toLowerCase());
     
-    return matchGroup && matchStatus && matchShift && matchSearch;
+    const matchDate = !filterDate || t.minDate === filterDate;
+    
+    return matchGroup && matchStatus && matchShift && matchSearch && matchDate;
   });
 
   const exportToExcel = () => {
@@ -128,7 +155,7 @@ const Reports: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-sm grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="space-y-1">
           <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Busca OM/Desc</label>
           <div className="relative">
@@ -139,6 +166,23 @@ const Reports: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
               className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-gray-100 dark:border-zinc-700 rounded-xl outline-none text-sm font-bold focus:border-blue-500 text-black dark:text-white"
               placeholder="Digite aqui..."
             />
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Data Início</label>
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+            <select 
+              value={filterDate}
+              onChange={e => setFilterDate(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-gray-100 dark:border-zinc-700 rounded-xl outline-none text-sm font-bold focus:border-blue-500 text-black dark:text-white appearance-none cursor-pointer"
+            >
+              <option value="">Todas as Datas</option>
+              {uniqueStartDates.map(date => (
+                <option key={date} value={date}>{date}</option>
+              ))}
+            </select>
           </div>
         </div>
 
