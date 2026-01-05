@@ -4,7 +4,7 @@ import { collection, query, where, onSnapshot, doc, addDoc, writeBatch, getDocs,
 import { db } from '../firebase';
 import { UserProfile, Grupo, Task, TaskStatus } from '../types';
 import TaskCard from './TaskCard';
-import { Trash2, Upload, Loader2, FileSpreadsheet, Settings2, FolderPlus, Search, Filter, Eraser, AlertOctagon, XCircle, FileText, CheckSquare, Square, Calendar } from 'lucide-react';
+import { Trash2, Upload, Loader2, FileSpreadsheet, Settings2, FolderPlus, Search, Filter, Eraser, AlertOctagon, XCircle, FileText, CheckSquare, Square, Calendar, Briefcase } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -29,6 +29,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<TaskStatus | 'Todos'>('Todos');
   const [filterDate, setFilterDate] = useState('');
+  const [filterWorkCenter, setFilterWorkCenter] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'group' | 'tasks'; title: string; message: string; onConfirm: () => void; } | null>(null);
 
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
@@ -94,7 +95,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     return () => unsubscribe();
   }, [activeGroupId]);
 
-  // Extração de datas únicas para o filtro (estilo Excel)
+  // Extração de datas únicas para o filtro
   const uniqueStartDates = useMemo(() => {
     const dates = new Set<string>();
     tasks.forEach(t => {
@@ -102,9 +103,18 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
         dates.add(t.minDate.trim());
       }
     });
-    return Array.from(dates).sort((a, b) => {
-      return getDateTimestamp(a) - getDateTimestamp(b);
+    return Array.from(dates).sort((a, b) => getDateTimestamp(a) - getDateTimestamp(b));
+  }, [tasks]);
+
+  // Extração de centros de trabalho únicos para o filtro
+  const uniqueWorkCenters = useMemo(() => {
+    const centers = new Set<string>();
+    tasks.forEach(t => {
+      if (t.workCenter && t.workCenter.trim() !== '') {
+        centers.add(t.workCenter.trim());
+      }
     });
+    return Array.from(centers).sort();
   }, [tasks]);
 
   const filteredTasks = useMemo(() => {
@@ -118,7 +128,8 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
         (t.circuit && t.circuit.toLowerCase().includes(term));
       const matchStatus = filterStatus === 'Todos' || t.status === filterStatus;
       const matchDate = !filterDate || t.minDate === filterDate;
-      return matchSearch && matchStatus && matchDate;
+      const matchWorkCenter = !filterWorkCenter || t.workCenter === filterWorkCenter;
+      return matchSearch && matchStatus && matchDate && matchWorkCenter;
     });
 
     return result.sort((a, b) => {
@@ -127,7 +138,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
       if (timeA === timeB) return b.updatedAt - a.updatedAt;
       return timeA - timeB;
     });
-  }, [tasks, searchTerm, filterStatus, filterDate]);
+  }, [tasks, searchTerm, filterStatus, filterDate, filterWorkCenter]);
 
   const toggleTaskSelection = (id: string) => {
     const next = new Set(selectedTaskIds);
@@ -287,7 +298,6 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     setIsProcessing(true);
     setProcessingText('Excluindo aba e dados...');
     try {
-      // 1. Deletar tarefas primeiro
       const q = query(collection(db, 'tarefas'), where('groupId', '==', activeGroupId));
       const snapshot = await getDocs(q);
       const taskDocs = snapshot.docs;
@@ -300,10 +310,8 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
         await batch.commit();
       }
 
-      // 2. Deletar o grupo
       await deleteDoc(doc(db, 'grupos', activeGroupId));
       
-      // 3. Redirecionar para outra aba se existir
       const remaining = grupos.filter(g => g.id !== activeGroupId);
       if (remaining.length > 0) {
         setActiveGroupId(remaining[0].id);
@@ -385,18 +393,18 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
         <div className="space-y-4 md:space-y-6 animate-in fade-in duration-500">
           <div className="bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-gray-100 dark:border-zinc-800 shadow-sm">
             <div className="flex flex-col xl:flex-row gap-4">
-              <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 flex-1">
-                <div className="relative flex-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 flex-1">
+                <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                   <input 
                     type="text" 
-                    placeholder="Buscar OM, Descrição, CT ou Circuito..." 
+                    placeholder="Busca Geral..." 
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black dark:text-white transition-all"
                   />
                 </div>
-                <div className="relative flex-1">
+                <div className="relative">
                   <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                   <select 
                     value={filterDate}
@@ -409,7 +417,20 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
                     ))}
                   </select>
                 </div>
-                <div className="relative min-w-[160px]">
+                <div className="relative">
+                  <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <select 
+                    value={filterWorkCenter}
+                    onChange={(e) => setFilterWorkCenter(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black dark:text-white appearance-none cursor-pointer"
+                  >
+                    <option value="">Todos os CTs</option>
+                    {uniqueWorkCenters.map(ct => (
+                      <option key={ct} value={ct}>{ct}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="relative">
                   <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                   <select 
                     value={filterStatus}
@@ -425,11 +446,11 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0">
                 {profile.role !== 'executor' && (
                   <>
                     <label className="flex items-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl cursor-pointer font-black uppercase text-[10px] whitespace-nowrap hover:bg-emerald-700 transition-colors shadow-lg">
-                      <Upload size={16} /> Importar Colunas
+                      <Upload size={16} /> Importar
                       <input type="file" onClick={(e) => (e.currentTarget.value = '')} accept=".xlsx, .xls" onChange={handleExcelFileSelect} className="hidden" />
                     </label>
                     <button onClick={() => setConfirmDelete({ 

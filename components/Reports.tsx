@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Task, Grupo } from '../types';
-import { FileDown, Search, Loader2, Table, FileText, Calendar } from 'lucide-react';
+import { FileDown, Search, Loader2, Table, FileText, Calendar, Briefcase } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -17,6 +17,7 @@ const Reports: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
   const [filterShift, setFilterShift] = useState('');
   const [filterSearch, setFilterSearch] = useState('');
   const [filterDate, setFilterDate] = useState('');
+  const [filterWorkCenter, setFilterWorkCenter] = useState('');
 
   useEffect(() => {
     const q = query(collection(db, 'tarefas'));
@@ -38,7 +39,7 @@ const Reports: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
     return isNaN(d.getTime()) ? Infinity : d.getTime();
   };
 
-  // Extração de datas únicas para o filtro (estilo Excel)
+  // Extração de datas únicas para o filtro
   const uniqueStartDates = useMemo(() => {
     const dates = new Set<string>();
     tasks.forEach(t => {
@@ -46,9 +47,18 @@ const Reports: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
         dates.add(t.minDate.trim());
       }
     });
-    return Array.from(dates).sort((a, b) => {
-      return getDateTimestamp(a) - getDateTimestamp(b);
+    return Array.from(dates).sort((a, b) => getDateTimestamp(a) - getDateTimestamp(b));
+  }, [tasks]);
+
+  // Extração de centros de trabalho únicos para o filtro
+  const uniqueWorkCenters = useMemo(() => {
+    const centers = new Set<string>();
+    tasks.forEach(t => {
+      if (t.workCenter && t.workCenter.trim() !== '') {
+        centers.add(t.workCenter.trim());
+      }
     });
+    return Array.from(centers).sort();
   }, [tasks]);
 
   const filteredTasks = tasks.filter(t => {
@@ -60,8 +70,9 @@ const Reports: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
       t.omNumber.toLowerCase().includes(filterSearch.toLowerCase());
     
     const matchDate = !filterDate || t.minDate === filterDate;
+    const matchWorkCenter = !filterWorkCenter || t.workCenter === filterWorkCenter;
     
-    return matchGroup && matchStatus && matchShift && matchSearch && matchDate;
+    return matchGroup && matchStatus && matchShift && matchSearch && matchDate && matchWorkCenter;
   });
 
   const exportToExcel = () => {
@@ -155,7 +166,7 @@ const Reports: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-sm grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <div className="space-y-1">
           <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Busca OM/Desc</label>
           <div className="relative">
@@ -181,6 +192,23 @@ const Reports: React.FC<{ grupos: Grupo[] }> = ({ grupos }) => {
               <option value="">Todas as Datas</option>
               {uniqueStartDates.map(date => (
                 <option key={date} value={date}>{date}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">C. Trabalho (CT)</label>
+          <div className="relative">
+            <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+            <select 
+              value={filterWorkCenter}
+              onChange={e => setFilterWorkCenter(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-gray-100 dark:border-zinc-700 rounded-xl outline-none text-sm font-bold focus:border-blue-500 text-black dark:text-white appearance-none cursor-pointer"
+            >
+              <option value="">Todos os CTs</option>
+              {uniqueWorkCenters.map(ct => (
+                <option key={ct} value={ct}>{ct}</option>
               ))}
             </select>
           </div>
