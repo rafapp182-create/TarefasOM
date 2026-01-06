@@ -11,7 +11,7 @@ import UserManagement from './components/UserManagement';
 import Reports from './components/Reports';
 import Overview from './components/Overview';
 import ChangePasswordModal from './components/ChangePasswordModal';
-import { Loader2, Menu, User as UserIcon } from 'lucide-react';
+import { Loader2, Menu } from 'lucide-react';
 
 export type ViewType = 'dashboard' | 'tarefas' | 'usuarios' | 'relatorios';
 export type ThemeType = 'light' | 'dark';
@@ -154,17 +154,6 @@ const App: React.FC = () => {
       </div>
 
       <main className="flex-1 overflow-y-auto overflow-x-hidden pt-16 md:pt-0 custom-scrollbar relative bg-gray-50 dark:bg-zinc-950">
-        <header className="hidden md:flex items-center justify-end px-8 py-4 bg-white/50 dark:bg-zinc-950/50 backdrop-blur-md sticky top-0 z-20 border-b border-gray-100 dark:border-zinc-900">
-          <div className="flex items-center gap-4 bg-white dark:bg-zinc-900 px-5 py-2.5 rounded-2xl shadow-sm border border-gray-100 dark:border-zinc-800">
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none">Usuário Autenticado</span>
-              <span className="text-sm font-black text-black dark:text-white uppercase tracking-tight mt-1">{profile.name}</span>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-lg">
-              <UserIcon size={20} />
-            </div>
-          </div>
-        </header>
         {renderView()}
       </main>
 
