@@ -4,7 +4,7 @@ import { collection, query, where, onSnapshot, doc, addDoc, writeBatch, getDocs,
 import { db } from '../firebase';
 import { UserProfile, Grupo, Task, TaskStatus } from '../types';
 import TaskCard from './TaskCard';
-import { Trash2, Upload, Loader2, FileSpreadsheet, Settings2, FolderPlus, Search, Filter, Eraser, AlertOctagon, XCircle, FileText, CheckSquare, Square, Calendar, Briefcase } from 'lucide-react';
+import { Trash2, Upload, Loader2, FileSpreadsheet, Settings2, FolderPlus, Search, Filter, Eraser, AlertOctagon, XCircle, FileText, CheckSquare, Square, Calendar, Briefcase, ChevronDown, Check, X, PlusCircle, AlertTriangle, FileDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -27,10 +27,18 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingText, setProcessingText] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<TaskStatus | 'Todos'>('Todos');
-  const [filterDate, setFilterDate] = useState('');
-  const [filterWorkCenter, setFilterWorkCenter] = useState('');
-  const [confirmDelete, setConfirmDelete] = useState<{ type: 'group' | 'tasks'; title: string; message: string; onConfirm: () => void; } | null>(null);
+  
+  const [filterStatus, setFilterStatus] = useState<Set<string>>(new Set());
+  const [filterDate, setFilterDate] = useState<Set<string>>(new Set());
+  const [filterWorkCenter, setFilterWorkCenter] = useState<Set<string>>(new Set());
+  const [openFilter, setOpenFilter] = useState<string | null>(null);
+
+  const [confirmDelete, setConfirmDelete] = useState<{ 
+    type: 'group' | 'tasks' | 'selected'; 
+    title: string; 
+    message: string; 
+    onConfirm: () => void; 
+  } | null>(null);
 
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [showMapping, setShowMapping] = useState(false);
@@ -43,6 +51,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     } else if (grupos.length === 0) {
       setActiveGroupId(null);
     }
+    setSelectedTaskIds(new Set());
   }, [grupos, activeGroupId]);
 
   const getDateTimestamp = (dateStr: string): number => {
@@ -64,14 +73,6 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
       const month = String(val.getMonth() + 1).padStart(2, '0');
       const year = val.getFullYear();
       return `${day}/${month}/${year}`;
-    }
-    if (typeof val === 'number' && val > 40000 && val < 60000) {
-      try {
-        const date = XLSX.SSF.parse_date_code(val);
-        return `${String(date.d).padStart(2, '0')}/${String(date.m).padStart(2, '0')}/${date.y}`;
-      } catch (e) {
-        return String(val);
-      }
     }
     return String(val).trim();
   };
@@ -95,40 +96,31 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     return () => unsubscribe();
   }, [activeGroupId]);
 
-  // Extração de datas únicas para o filtro
   const uniqueStartDates = useMemo(() => {
     const dates = new Set<string>();
-    tasks.forEach(t => {
-      if (t.minDate && t.minDate.trim() !== '') {
-        dates.add(t.minDate.trim());
-      }
-    });
+    tasks.forEach(t => t.minDate && dates.add(t.minDate.trim()));
     return Array.from(dates).sort((a, b) => getDateTimestamp(a) - getDateTimestamp(b));
   }, [tasks]);
 
-  // Extração de centros de trabalho únicos para o filtro
   const uniqueWorkCenters = useMemo(() => {
     const centers = new Set<string>();
-    tasks.forEach(t => {
-      if (t.workCenter && t.workCenter.trim() !== '') {
-        centers.add(t.workCenter.trim());
-      }
-    });
+    tasks.forEach(t => t.workCenter && centers.add(t.workCenter.trim()));
     return Array.from(centers).sort();
   }, [tasks]);
 
   const filteredTasks = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
-    
     const result = tasks.filter(t => {
       const matchSearch = !term || 
         t.omNumber.toLowerCase().includes(term) || 
         t.description.toLowerCase().includes(term) ||
         t.workCenter.toLowerCase().includes(term) ||
         (t.circuit && t.circuit.toLowerCase().includes(term));
-      const matchStatus = filterStatus === 'Todos' || t.status === filterStatus;
-      const matchDate = !filterDate || t.minDate === filterDate;
-      const matchWorkCenter = !filterWorkCenter || t.workCenter === filterWorkCenter;
+      
+      const matchStatus = filterStatus.size === 0 || filterStatus.has(t.status);
+      const matchDate = filterDate.size === 0 || filterDate.has(t.minDate);
+      const matchWorkCenter = filterWorkCenter.size === 0 || filterWorkCenter.has(t.workCenter);
+      
       return matchSearch && matchStatus && matchDate && matchWorkCenter;
     });
 
@@ -140,66 +132,174 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     });
   }, [tasks, searchTerm, filterStatus, filterDate, filterWorkCenter]);
 
-  const toggleTaskSelection = (id: string) => {
-    const next = new Set(selectedTaskIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelectedTaskIds(next);
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedTaskIds.size === filteredTasks.length && filteredTasks.length > 0) {
-      setSelectedTaskIds(new Set());
-    } else {
-      setSelectedTaskIds(new Set(filteredTasks.map(t => t.id)));
-    }
-  };
-
-  const exportSelectedToPDF = () => {
-    const tasksToExport = tasks.filter(t => selectedTaskIds.has(t.id));
-    if (tasksToExport.length === 0) return;
-
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const activeGroupName = grupos.find(g => g.id === activeGroupId)?.name || 'Geral';
-
-    doc.setFontSize(16);
-    doc.text(`Lista de Tarefas - ${activeGroupName}`, 14, 20);
-    doc.setFontSize(10);
-    doc.text(`Gerado em: ${new Date().toLocaleString()} | Selecionados: ${tasksToExport.length}`, 14, 28);
-
-    const tableRows = tasksToExport.map(t => [
-      t.omNumber || '-',
-      t.description || '-',
-      t.circuit || '-'
-    ]);
-
-    autoTable(doc, {
-      startY: 35,
-      head: [['Nº OM', 'Descrição', 'Circuito']],
-      body: tableRows,
-      theme: 'grid',
-      headStyles: { fillColor: [37, 99, 235], fontStyle: 'bold', textColor: [255, 255, 255] },
-      styles: { fontSize: 9, cellPadding: 3, overflow: 'linebreak' },
-      columnStyles: { 
-        0: { cellWidth: 30 }, 
-        1: { cellWidth: 'auto' }, 
-        2: { cellWidth: 45 } 
-      }
-    });
-
-    doc.save(`OmPro_Selecao_${activeGroupName}_${new Date().getTime()}.pdf`);
-    setSelectedTaskIds(new Set());
+  const toggleFilterValue = (set: Set<string>, setter: (s: Set<string>) => void, value: string) => {
+    const next = new Set(set);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    setter(next);
   };
 
   const handleAddGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGroupName.trim()) return;
+    setIsProcessing(true);
+    setProcessingText('Criando Aba...');
     try {
-      const docRef = await addDoc(collection(db, 'grupos'), { name: newGroupName, createdAt: Date.now() });
+      const docRef = await addDoc(collection(db, 'grupos'), {
+        name: newGroupName.trim(),
+        createdAt: Date.now()
+      });
       setNewGroupName('');
       setIsAddingGroup(false);
       setActiveGroupId(docRef.id);
-    } catch (error) { console.error(error); }
+    } catch (err) {
+      alert("Erro ao criar aba.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!activeGroupId) return;
+    setIsProcessing(true);
+    setProcessingText('Removendo Aba e Dados...');
+    try {
+      const q = query(collection(db, 'tarefas'), where('groupId', '==', activeGroupId));
+      const snap = await getDocs(q);
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => batch.delete(d.ref));
+      batch.delete(doc(db, 'grupos', activeGroupId));
+      await batch.commit();
+      setConfirmDelete(null);
+    } catch (err) { alert("Erro ao excluir."); } finally { setIsProcessing(false); }
+  };
+
+  const handleClearTasks = async () => {
+    if (!activeGroupId) return;
+    setIsProcessing(true);
+    setProcessingText('Limpando Lista...');
+    try {
+      const q = query(collection(db, 'tarefas'), where('groupId', '==', activeGroupId));
+      const snap = await getDocs(q);
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+      setConfirmDelete(null);
+      setSelectedTaskIds(new Set());
+    } catch (err) { alert("Erro ao limpar."); } finally { setIsProcessing(false); }
+  };
+
+  const handleDeleteSelectedTasks = async () => {
+    if (selectedTaskIds.size === 0) return;
+    setIsProcessing(true);
+    setProcessingText('Excluindo Selecionados...');
+    try {
+      const batch = writeBatch(db);
+      selectedTaskIds.forEach(id => {
+        batch.delete(doc(db, 'tarefas', id));
+      });
+      await batch.commit();
+      setSelectedTaskIds(new Set());
+      setConfirmDelete(null);
+    } catch (err) { alert("Erro ao excluir tarefas."); } finally { setIsProcessing(false); }
+  };
+
+  const exportSelectedToPDF = () => {
+    if (selectedTaskIds.size === 0) return;
+    
+    setIsProcessing(true);
+    setProcessingText('Gerando Relatório...');
+
+    try {
+      const tasksToExport = tasks.filter(t => selectedTaskIds.has(t.id))
+        .sort((a, b) => getDateTimestamp(a.minDate) - getDateTimestamp(b.minDate));
+
+      // Colunas finais conforme solicitado (Removido Início, Fim e Status)
+      const requiredColumns = [
+        "CIRCUITO",
+        "LOCAL DE INSTALAÇÃO",
+        "TAG",
+        "Nº OM",
+        "DESCRIÇÃO DA ATIVIDADE",
+        "CENTRO DE TRAB.",
+        "QTD",
+        "DUR",
+        "DUR. TOTAL"
+      ];
+
+      const body = tasksToExport.map(t => {
+        return requiredColumns.map(col => {
+          // Tenta pegar do excelData usando a chave exata
+          const val = t.excelData ? (t.excelData[col] || t.excelData[col.toLowerCase()] || '') : '';
+          return val !== undefined && val !== null ? String(val).toUpperCase() : '-';
+        });
+      });
+
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const groupName = grupos.find(g => g.id === activeGroupId)?.name || 'OmPro';
+      
+      doc.setFontSize(14);
+      doc.setTextColor(20, 20, 20);
+      doc.text(`RELATÓRIO TÉCNICO OPERACIONAL - ${groupName.toUpperCase()}`, 10, 15);
+      
+      doc.setFontSize(7);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`DATA DE EMISSÃO: ${new Date().toLocaleString()} | TOTAL DE ITENS: ${tasksToExport.length}`, 10, 21);
+
+      // Configuração de Estilo e Escala com colunas reduzidas
+      autoTable(doc, {
+        startY: 25,
+        head: [requiredColumns],
+        body: body,
+        theme: 'grid',
+        headStyles: { 
+          fillColor: [30, 41, 59], 
+          textColor: [255, 255, 255], 
+          fontStyle: 'bold', 
+          fontSize: 8, // Fonte maior pois temos menos colunas
+          halign: 'center',
+          valign: 'middle'
+        },
+        bodyStyles: { 
+          fontSize: 7.5, 
+          cellPadding: 2,
+          textColor: [40, 40, 40],
+          lineWidth: 0.1
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252]
+        },
+        columnStyles: {
+          4: { cellWidth: 80 }, // Descrição com mais espaço agora
+          3: { halign: 'center' }, // Nº OM centralizado
+          6: { halign: 'center' }, // QTD centralizado
+          7: { halign: 'center' }, // DUR centralizado
+          8: { halign: 'center' }  // DUR TOTAL centralizado
+        },
+        styles: { 
+          overflow: 'linebreak',
+          valign: 'middle',
+          font: 'helvetica'
+        },
+        margin: { top: 25, left: 10, right: 10, bottom: 15 },
+        didDrawPage: (data) => {
+          const str = "Página " + doc.internal.getNumberOfPages();
+          doc.setFontSize(7);
+          const pageSize = doc.internal.pageSize;
+          const pageHeight = pageSize.height ? pageSize.height : pageSize.getHeight();
+          doc.text(str, data.settings.margin.left, pageHeight - 8);
+          doc.text("OMPRO LIVE - RELATÓRIO OPERACIONAL", pageSize.width - 60, pageHeight - 8);
+        }
+      });
+
+      const fileName = `RELATORIO_${groupName.replace(/\s+/g, '_').toUpperCase()}_${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(fileName);
+    } catch (err: any) {
+      console.error(err);
+      alert("Erro ao gerar PDF: " + err.message);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleExcelFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -214,13 +314,10 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
         const workbook = XLSX.read(dataBuffer, { type: 'array', cellDates: true });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' }) as any[][];
-        
         let headerIndex = rows.findIndex(row => row.filter(cell => String(cell).trim() !== '').length >= 3);
         if (headerIndex === -1) headerIndex = 0;
-        
         const headers = rows[headerIndex].map(h => String(h).trim()).filter(h => h !== '');
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { range: headerIndex, defval: '', blankrows: false });
-        
         setExcelHeaders(headers);
         setExcelDataPending(jsonData);
         setShowMapping(true);
@@ -236,11 +333,9 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
     try {
       const data = excelDataPending;
       const CHUNK_SIZE = 400; 
-      
       for (let i = 0; i < data.length; i += CHUNK_SIZE) {
         const chunk = data.slice(i, i + CHUNK_SIZE);
         const batch = writeBatch(db);
-        
         chunk.forEach((row: any) => {
           const newTaskRef = doc(collection(db, 'tarefas'));
           batch.set(newTaskRef, {
@@ -259,70 +354,10 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
             history: []
           });
         });
-        
         await batch.commit();
-        setProcessingText(`Importando... ${Math.min(i + CHUNK_SIZE, data.length)} de ${data.length}`);
       }
       alert("Importação concluída com sucesso!");
-    } catch (err: any) { 
-      console.error(err);
-      alert("Erro ao importar: " + err.message); 
-    } finally { setIsProcessing(false); }
-  };
-
-  const handleClearGroup = async () => {
-    setConfirmDelete(null);
-    setIsProcessing(true);
-    setProcessingText('Limpando base...');
-    try {
-      const q = query(collection(db, 'tarefas'), where('groupId', '==', activeGroupId));
-      const snapshot = await getDocs(q);
-      const docs = snapshot.docs;
-      
-      const CHUNK_SIZE = 400;
-      for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
-        const chunk = docs.slice(i, i + CHUNK_SIZE);
-        const batch = writeBatch(db);
-        chunk.forEach(d => batch.delete(d.ref));
-        await batch.commit();
-        setProcessingText(`Excluindo... ${Math.min(i + CHUNK_SIZE, docs.length)} de ${docs.length}`);
-      }
-    } catch (err: any) { 
-      alert("Erro ao limpar lista: " + err.message); 
-    } finally { setIsProcessing(false); }
-  };
-
-  const handleDeleteGroup = async () => {
-    if (!activeGroupId) return;
-    setConfirmDelete(null);
-    setIsProcessing(true);
-    setProcessingText('Excluindo aba e dados...');
-    try {
-      const q = query(collection(db, 'tarefas'), where('groupId', '==', activeGroupId));
-      const snapshot = await getDocs(q);
-      const taskDocs = snapshot.docs;
-      
-      const CHUNK_SIZE = 400;
-      for (let i = 0; i < taskDocs.length; i += CHUNK_SIZE) {
-        const chunk = taskDocs.slice(i, i + CHUNK_SIZE);
-        const batch = writeBatch(db);
-        chunk.forEach(d => batch.delete(d.ref));
-        await batch.commit();
-      }
-
-      await deleteDoc(doc(db, 'grupos', activeGroupId));
-      
-      const remaining = grupos.filter(g => g.id !== activeGroupId);
-      if (remaining.length > 0) {
-        setActiveGroupId(remaining[0].id);
-      } else {
-        setActiveGroupId(null);
-      }
-    } catch (err: any) {
-      alert("Erro ao excluir aba: " + err.message);
-    } finally {
-      setIsProcessing(false);
-    }
+    } catch (err: any) { alert("Erro ao importar: " + err.message); } finally { setIsProcessing(false); }
   };
 
   const activeGroup = grupos.find(g => g.id === activeGroupId);
@@ -337,25 +372,43 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
           </h2>
           <p className="text-xs md:text-sm text-black dark:text-zinc-400 font-medium italic">Gestão de tarefas em tempo real.</p>
         </div>
-        <div className="flex gap-2 w-full md:w-auto">
+        <div className="flex flex-wrap gap-2 w-full md:w-auto">
           {profile.role !== 'executor' && (
             <>
-              <button onClick={() => setIsAddingGroup(true)} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-black dark:bg-zinc-800 text-white rounded-xl font-bold transition-all text-sm">
+              <button 
+                onClick={() => setIsAddingGroup(true)} 
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-4 bg-black dark:bg-zinc-800 text-white rounded-2xl font-black uppercase tracking-widest text-xs transition-all hover:scale-105 active:scale-95 shadow-xl shadow-black/10"
+              >
                 <FolderPlus size={18} /> Criar Aba
               </button>
+              
               {activeGroupId && (
-                <button 
-                  onClick={() => setConfirmDelete({ 
-                    type: 'group', 
-                    title: 'Excluir Aba Completa', 
-                    message: `ATENÇÃO: Isso apagará a aba "${activeGroup?.name}" e TODAS as tarefas vinculadas a ela permanentemente. Confirma?`, 
-                    onConfirm: handleDeleteGroup 
-                  })}
-                  className="flex items-center justify-center p-3 bg-rose-600 text-white rounded-xl hover:bg-rose-700 transition-colors shadow-lg shadow-rose-200 dark:shadow-none"
-                  title="Excluir Aba Atual"
-                >
-                  <Trash2 size={20} />
-                </button>
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <button 
+                    onClick={() => setConfirmDelete({
+                      type: 'tasks',
+                      title: 'Limpar Lista',
+                      message: 'Isso apagará todas as tarefas desta aba permanentemente.',
+                      onConfirm: handleClearTasks
+                    })}
+                    className="flex-1 sm:flex-none p-4 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-2xl hover:bg-rose-100 transition-colors border border-rose-100 dark:border-rose-900/30"
+                    title="Limpar Lista"
+                  >
+                    <Eraser size={20} />
+                  </button>
+                  <button 
+                    onClick={() => setConfirmDelete({
+                      type: 'group',
+                      title: 'Excluir Aba',
+                      message: 'Isso apagará a aba e todas as tarefas vinculadas a ela.',
+                      onConfirm: handleDeleteGroup
+                    })}
+                    className="flex-1 sm:flex-none p-4 bg-rose-600 text-white rounded-2xl hover:bg-rose-700 transition-colors shadow-lg shadow-rose-500/20"
+                    title="Excluir Aba"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                </div>
               )}
             </>
           )}
@@ -374,24 +427,9 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
         ))}
       </div>
 
-      {isAddingGroup && (
-        <div className="bg-white dark:bg-zinc-900 p-4 md:p-6 rounded-2xl shadow-xl border border-blue-50 dark:border-zinc-800 animate-in slide-in-from-top-4">
-          <form onSubmit={handleAddGroup} className="flex flex-col md:flex-row items-end gap-4">
-            <div className="flex-1 w-full">
-              <label className="block text-[10px] font-black text-black dark:text-zinc-400 uppercase mb-1 ml-1">Nome da Aba</label>
-              <input autoFocus type="text" placeholder="Ex: PARADA SETOR 01" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className="w-full bg-gray-50 dark:bg-zinc-800 border-2 border-gray-200 dark:border-zinc-700 p-3 md:p-4 rounded-xl focus:border-blue-500 outline-none font-bold text-black dark:text-white" />
-            </div>
-            <div className="flex gap-2 w-full md:w-auto">
-              <button type="submit" className="flex-1 px-6 py-3 bg-blue-600 text-white font-black rounded-xl uppercase text-xs">Salvar</button>
-              <button type="button" onClick={() => setIsAddingGroup(false)} className="px-4 py-3 bg-gray-100 dark:bg-zinc-700 text-black dark:text-white font-bold rounded-xl text-xs">Sair</button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {activeGroup ? (
-        <div className="space-y-4 md:space-y-6 animate-in fade-in duration-500">
-          <div className="bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-gray-100 dark:border-zinc-800 shadow-sm">
+      {activeGroup && (
+        <div className="space-y-4 md:space-y-6">
+          <div className="bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-gray-100 dark:border-zinc-800 shadow-sm relative z-40">
             <div className="flex flex-col xl:flex-row gap-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 flex-1">
                 <div className="relative">
@@ -404,64 +442,44 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
                     className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black dark:text-white transition-all"
                   />
                 </div>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                  <select 
-                    value={filterDate}
-                    onChange={(e) => setFilterDate(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black dark:text-white appearance-none cursor-pointer"
-                  >
-                    <option value="">Todas as Datas</option>
-                    {uniqueStartDates.map(date => (
-                      <option key={date} value={date}>{date}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="relative">
-                  <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                  <select 
-                    value={filterWorkCenter}
-                    onChange={(e) => setFilterWorkCenter(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black dark:text-white appearance-none cursor-pointer"
-                  >
-                    <option value="">Todos os CTs</option>
-                    {uniqueWorkCenters.map(ct => (
-                      <option key={ct} value={ct}>{ct}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="relative">
-                  <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                  <select 
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value as any)}
-                    className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 border-transparent rounded-xl focus:border-blue-600 outline-none font-bold text-sm text-black dark:text-white appearance-none cursor-pointer"
-                  >
-                    <option value="Todos">Todos Status</option>
-                    <option value="Pendente">Pendentes</option>
-                    <option value="Em andamento">Em andamento</option>
-                    <option value="Executada">Executadas</option>
-                    <option value="Não executada">Não executadas</option>
-                  </select>
-                </div>
+
+                <MultiSelectDropdown 
+                  label="Datas" 
+                  icon={<Calendar size={16} />} 
+                  options={uniqueStartDates} 
+                  selected={filterDate} 
+                  onToggle={(val) => toggleFilterValue(filterDate, setFilterDate, val)} 
+                  isOpen={openFilter === 'date'}
+                  onOpen={() => setOpenFilter(openFilter === 'date' ? null : 'date')}
+                />
+
+                <MultiSelectDropdown 
+                  label="Setores (CT)" 
+                  icon={<Briefcase size={16} />} 
+                  options={uniqueWorkCenters} 
+                  selected={filterWorkCenter} 
+                  onToggle={(val) => toggleFilterValue(filterWorkCenter, setFilterWorkCenter, val)}
+                  isOpen={openFilter === 'wc'}
+                  onOpen={() => setOpenFilter(openFilter === 'wc' ? null : 'wc')}
+                />
+
+                <MultiSelectDropdown 
+                  label="Status" 
+                  icon={<Filter size={16} />} 
+                  options={['Pendente', 'Em andamento', 'Executada', 'Não executada']} 
+                  selected={filterStatus} 
+                  onToggle={(val) => toggleFilterValue(filterStatus, setFilterStatus, val)}
+                  isOpen={openFilter === 'status'}
+                  onOpen={() => setOpenFilter(openFilter === 'status' ? null : 'status')}
+                />
               </div>
 
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0">
+              <div className="flex items-center gap-2">
                 {profile.role !== 'executor' && (
-                  <>
-                    <label className="flex items-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl cursor-pointer font-black uppercase text-[10px] whitespace-nowrap hover:bg-emerald-700 transition-colors shadow-lg">
-                      <Upload size={16} /> Importar
-                      <input type="file" onClick={(e) => (e.currentTarget.value = '')} accept=".xlsx, .xls" onChange={handleExcelFileSelect} className="hidden" />
-                    </label>
-                    <button onClick={() => setConfirmDelete({ 
-                      type: 'tasks', 
-                      title: 'Limpar Lista', 
-                      message: `Deseja realmente apagar todas as ${tasks.length} tarefas deste grupo? Esta ação não pode ser desfeita.`, 
-                      onConfirm: handleClearGroup 
-                    })} className="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-xl hover:bg-rose-100 transition-colors">
-                      <Eraser size={18} />
-                    </button>
-                  </>
+                  <label className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-xl cursor-pointer font-black uppercase text-[10px] whitespace-nowrap hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-500/10 w-full md:w-auto justify-center">
+                    <Upload size={16} /> Importar Planilha
+                    <input type="file" onClick={(e) => (e.currentTarget.value = '')} accept=".xlsx, .xls" onChange={handleExcelFileSelect} className="hidden" />
+                  </label>
                 )}
               </div>
             </div>
@@ -470,25 +488,35 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="animate-spin text-blue-600 w-10 h-10 mb-2" />
-              <p className="text-[10px] font-black uppercase text-black dark:text-zinc-400">Carregando dados...</p>
             </div>
-          ) : filteredTasks.length > 0 ? (
+          ) : (
             <div className="space-y-4">
               <div className="hidden md:block bg-white dark:bg-zinc-900 rounded-2xl border border-gray-100 dark:border-zinc-800 overflow-hidden shadow-sm">
-                <table className="w-full text-left">
+                <table className="w-full text-left border-collapse">
                   <thead className="bg-gray-50 dark:bg-zinc-800/50 border-b border-gray-100 dark:border-zinc-800">
                     <tr>
                       <th className="px-6 py-4 w-10">
-                        <button onClick={toggleSelectAll} className="text-blue-600">
-                          {selectedTaskIds.size === filteredTasks.length && filteredTasks.length > 0 ? <CheckSquare size={20} /> : <Square size={20} />}
+                        <button onClick={() => {
+                          const allVisibleIds = filteredTasks.map(t => t.id);
+                          const allSelected = allVisibleIds.every(id => selectedTaskIds.has(id));
+                          if (allSelected) {
+                            const next = new Set(selectedTaskIds);
+                            allVisibleIds.forEach(id => next.delete(id));
+                            setSelectedTaskIds(next);
+                          } else {
+                            setSelectedTaskIds(new Set([...selectedTaskIds, ...allVisibleIds]));
+                          }
+                        }} className="text-blue-600">
+                          {filteredTasks.length > 0 && filteredTasks.every(t => selectedTaskIds.has(t.id)) ? <CheckSquare size={20} /> : <Square size={20} />}
                         </button>
                       </th>
                       <th className="px-4 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest">Nº OM</th>
                       <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest">Descrição</th>
                       <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest">CT</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest text-center">Início (Cresc.)</th>
+                      <th className="px-4 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest text-center whitespace-nowrap">DUR. TOTAL</th>
+                      <th className="px-4 py-4 text-[10px] font-black text-black dark:text-zinc-500 uppercase tracking-widest text-center">Início</th>
+                      <th className="px-4 py-4 text-[10px] font-black text-black dark:text-zinc-500 uppercase tracking-widest text-center">Término</th>
                       <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest text-center">Status</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-black dark:text-zinc-400 uppercase tracking-widest text-right">Ação</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 dark:divide-zinc-800">
@@ -500,7 +528,12 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
                         profile={profile} 
                         variant="list" 
                         isSelected={selectedTaskIds.has(task.id)}
-                        onToggleSelection={() => toggleTaskSelection(task.id)}
+                        onToggleSelection={() => {
+                          const next = new Set(selectedTaskIds);
+                          if (next.has(task.id)) next.delete(task.id);
+                          else next.add(task.id);
+                          setSelectedTaskIds(next);
+                        }}
                       />
                     ))}
                   </tbody>
@@ -515,82 +548,207 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, grupos, activeGroupId, s
                     profile={profile} 
                     variant="card" 
                     isSelected={selectedTaskIds.has(task.id)}
-                    onToggleSelection={() => toggleTaskSelection(task.id)}
+                    onToggleSelection={() => {
+                      const next = new Set(selectedTaskIds);
+                      if (next.has(task.id)) next.delete(task.id);
+                      else next.add(task.id);
+                      setSelectedTaskIds(next);
+                    }}
                   />
                 ))}
               </div>
             </div>
-          ) : (
-            <div className="py-20 text-center bg-white dark:bg-zinc-900 rounded-3xl border-2 border-dashed border-gray-200 dark:border-zinc-800">
-              <FileSpreadsheet className="mx-auto text-blue-300 dark:text-zinc-700 w-12 h-12 mb-4" />
-              <p className="text-sm font-black text-black dark:text-white uppercase">Nenhuma tarefa corresponde aos filtros</p>
-            </div>
           )}
-        </div>
-      ) : (
-        <div className="text-center py-20 bg-gray-50 dark:bg-zinc-900 rounded-3xl border-2 border-dashed border-gray-200 dark:border-zinc-800">
-          <Settings2 className="mx-auto w-12 h-12 text-gray-300 dark:text-zinc-700 mb-4" />
-          <h3 className="text-sm font-black text-black dark:text-zinc-400 uppercase tracking-widest">Selecione uma aba para começar</h3>
         </div>
       )}
 
       {selectedTaskIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[150] w-[calc(100%-2rem)] max-w-lg bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border border-blue-100 dark:border-zinc-700 p-4 rounded-3xl shadow-2xl flex items-center justify-between gap-4 animate-in slide-in-from-bottom-8 duration-300">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center font-black">{selectedTaskIds.size}</div>
-            <div className="hidden sm:block">
-              <p className="text-xs font-black text-black dark:text-white uppercase leading-none">Itens Selecionados</p>
-              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Exportar OM, Desc. e Circuito</p>
-            </div>
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 shadow-2xl rounded-full px-6 py-4 z-50 flex items-center gap-6 animate-in slide-in-from-bottom-10 duration-300">
+          <div className="flex items-center gap-2">
+            <span className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-black">
+              {selectedTaskIds.size}
+            </span>
+            <span className="text-xs font-black text-black dark:text-white uppercase tracking-tighter">Itens Selecionados</span>
           </div>
+          
+          <div className="h-8 w-px bg-gray-100 dark:bg-zinc-800" />
+          
           <div className="flex items-center gap-2">
             <button 
-              onClick={() => setSelectedTaskIds(new Set())}
-              className="px-4 py-2.5 text-rose-600 font-black uppercase text-[10px] tracking-widest hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-colors"
-            >
-              Cancelar
-            </button>
-            <button 
               onClick={exportSelectedToPDF}
-              className="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-blue-200 dark:shadow-none hover:bg-blue-700 transition-all active:scale-95"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-blue-100 transition-colors"
             >
-              <FileText size={16} /> Gerar PDF
+              <FileDown size={16} /> Gerar PDF Técnico
             </button>
+            
+            {profile.role !== 'executor' && (
+              <button 
+                onClick={() => setConfirmDelete({
+                  type: 'selected',
+                  title: 'Excluir Selecionados',
+                  message: `Deseja excluir permanentemente as ${selectedTaskIds.size} tarefas selecionadas?`,
+                  onConfirm: handleDeleteSelectedTasks
+                })}
+                className="flex items-center gap-2 px-4 py-2 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-colors"
+              >
+                <Trash2 size={16} /> Excluir
+              </button>
+            )}
+            
+            <button 
+              onClick={() => setSelectedTaskIds(new Set())}
+              className="p-2 text-zinc-400 hover:text-black dark:hover:text-white transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[700] flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-[2rem] shadow-2xl border border-rose-100 dark:border-rose-900/30 overflow-hidden">
+            <div className="p-8 text-center space-y-4">
+              <div className="w-20 h-20 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <AlertTriangle size={40} />
+              </div>
+              <h3 className="text-2xl font-black text-black dark:text-white uppercase tracking-tighter leading-none">{confirmDelete.title}</h3>
+              <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400 leading-relaxed">{confirmDelete.message}</p>
+              <div className="flex gap-3 pt-6">
+                <button 
+                  onClick={() => setConfirmDelete(null)}
+                  className="flex-1 py-4 bg-gray-100 dark:bg-zinc-800 text-zinc-500 rounded-2xl font-black uppercase tracking-widest text-xs transition-all active:scale-95"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={confirmDelete.onConfirm}
+                  className="flex-[2] py-4 bg-rose-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-rose-500/20 transition-all active:scale-95"
+                >
+                  Confirmar Exclusão
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isAddingGroup && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[500] flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-gray-100 dark:border-zinc-800">
+            <div className="p-8 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gray-50/50 dark:bg-zinc-800/50">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-black dark:bg-zinc-700 rounded-2xl text-white">
+                  <FolderPlus size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-black dark:text-white uppercase tracking-tighter leading-tight">Nova Aba</h3>
+                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Identifique o grupo de tarefas</p>
+                </div>
+              </div>
+              <button onClick={() => { setIsAddingGroup(false); setNewGroupName(''); }} className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded-full transition-colors">
+                <X size={24} className="text-zinc-400" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleAddGroup} className="p-8 space-y-6">
+              <div>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 ml-1">Nome da Aba</label>
+                <input 
+                  autoFocus
+                  type="text" 
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  placeholder="Ex: Parada Preventiva"
+                  className="w-full px-6 py-5 bg-gray-50 dark:bg-zinc-800 border-2 border-transparent rounded-2xl outline-none focus:border-blue-600 font-bold text-black dark:text-white transition-all shadow-inner"
+                  required
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button 
+                  type="button"
+                  onClick={() => { setIsAddingGroup(false); setNewGroupName(''); }}
+                  className="flex-1 py-5 bg-gray-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 rounded-2xl font-black uppercase tracking-widest text-xs transition-all active:scale-95"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit"
+                  disabled={!newGroupName.trim() || isProcessing}
+                  className="flex-[2] py-5 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-blue-500/20 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 transition-all"
+                >
+                  {isProcessing ? <Loader2 size={18} className="animate-spin" /> : <><PlusCircle size={18} /> Criar Aba Agora</>}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
       {selectedTask && <TaskModal task={selectedTask} onClose={() => setSelectedTask(null)} profile={profile} />}
-      {showMapping && <ImportMappingModal headers={excelHeaders} onCancel={() => { setShowMapping(false); setExcelDataPending([]); }} onConfirm={processMappingAndImport} />}
-      {confirmDelete && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[250] flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-zinc-900 rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl animate-in zoom-in-95">
-            <div className="w-16 h-16 bg-rose-100 dark:bg-rose-900/30 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4"><AlertOctagon size={32} /></div>
-            <h3 className="text-lg font-black text-black dark:text-white uppercase mb-2">{confirmDelete.title}</h3>
-            <p className="text-sm text-black dark:text-zinc-400 mb-6 font-medium leading-tight">{confirmDelete.message}</p>
-            <div className="flex flex-col gap-2">
-              <button 
-                onClick={confirmDelete.onConfirm} 
-                className={`w-full py-4 ${confirmDelete.type === 'group' ? 'bg-rose-700' : 'bg-rose-600'} text-white rounded-xl font-black uppercase text-xs`}
-              >
-                Confirmar Exclusão
-              </button>
-              <button onClick={() => setConfirmDelete(null)} className="w-full py-3 bg-gray-100 dark:bg-zinc-800 text-black dark:text-white rounded-xl font-bold text-xs">Cancelar</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {showMapping && <ImportMappingModal headers={excelHeaders} onCancel={() => setShowMapping(false)} onConfirm={processMappingAndImport} />}
+      
       {isProcessing && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[300] flex items-center justify-center p-6 text-center">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[600] flex items-center justify-center p-6 text-center">
           <div>
             <Loader2 className="w-16 h-16 text-blue-600 animate-spin mx-auto mb-4" />
             <h3 className="text-xl font-black text-white uppercase tracking-tighter">{processingText}</h3>
-            <p className="text-xs text-zinc-500 font-bold mt-2 animate-pulse uppercase">Por favor, não feche esta janela...</p>
           </div>
         </div>
       )}
     </div>
   );
 };
+
+const MultiSelectDropdown: React.FC<{ 
+  label: string; 
+  icon: React.ReactNode; 
+  options: string[]; 
+  selected: Set<string>; 
+  onToggle: (v: string) => void; 
+  isOpen: boolean; 
+  onOpen: () => void;
+}> = ({ label, icon, options, selected, onToggle, isOpen, onOpen }) => (
+  <div className="relative">
+    <button 
+      onClick={onOpen}
+      className={`w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-zinc-800 border-2 rounded-xl focus:border-blue-600 outline-none font-bold text-sm transition-all ${selected.size > 0 ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-400'}`}
+    >
+      <div className="flex items-center gap-2 truncate">
+        {icon}
+        <span>{selected.size > 0 ? `${label} (${selected.size})` : label}</span>
+      </div>
+      <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+    </button>
+    
+    {isOpen && (
+      <>
+        <div className="fixed inset-0 z-10" onClick={onOpen} />
+        <div className="absolute top-full left-0 mt-2 w-full min-w-[200px] bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 shadow-2xl rounded-2xl z-50 p-2 max-h-[300px] overflow-y-auto animate-in fade-in zoom-in-95 duration-200 custom-scrollbar">
+          <div className="space-y-1">
+            {options.map(opt => (
+              <label 
+                key={opt} 
+                className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors ${selected.has(opt) ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' : 'text-gray-600 dark:text-gray-400'}`}
+              >
+                <input 
+                  type="checkbox" 
+                  className="hidden" 
+                  checked={selected.has(opt)} 
+                  onChange={() => onToggle(opt)} 
+                />
+                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${selected.has(opt) ? 'bg-blue-600 border-blue-600' : 'border-gray-300 dark:border-zinc-700'}`}>
+                  {selected.has(opt) && <Check size={12} className="text-white" />}
+                </div>
+                <span className="text-xs font-bold uppercase truncate">{opt || '(Vazio)'}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      </>
+    )}
+  </div>
+);
 
 export default Dashboard;
